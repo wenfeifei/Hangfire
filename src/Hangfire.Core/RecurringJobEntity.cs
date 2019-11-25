@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Cronos;
 using Hangfire.Annotations;
 using Hangfire.Common;
@@ -28,6 +29,7 @@ namespace Hangfire
     {
         private readonly IList<Exception> _errors = new List<Exception>();
         private readonly IDictionary<string, string> _recurringJob;
+        private readonly DateTime _now;
 
         public RecurringJobEntity(
             [NotNull] string recurringJobId,
@@ -38,6 +40,7 @@ namespace Hangfire
             if (timeZoneResolver == null) throw new ArgumentNullException(nameof(timeZoneResolver));
 
             _recurringJob = recurringJob ?? throw new ArgumentNullException(nameof(recurringJob));
+            _now = now;
 
             RecurringJobId = recurringJobId ?? throw new ArgumentNullException(nameof(recurringJobId));
 
@@ -104,6 +107,12 @@ namespace Hangfire
             {
                 Version = int.Parse(recurringJob["V"], CultureInfo.InvariantCulture);
             }
+
+            if (recurringJob.TryGetValue("RetryAttempt", out var attemptString) &&
+                int.TryParse(attemptString, out var retryAttempt))
+            {
+                RetryAttempt = retryAttempt;
+            }
         }
 
         public string RecurringJobId { get; }
@@ -119,6 +128,7 @@ namespace Hangfire
         public DateTime? LastExecution { get; set; }
         public string LastJobId { get; set; }
         public int? Version { get; set; }
+        public int RetryAttempt { get; set; }
 
         public bool TrySchedule(out DateTime? nextExecution, out Exception error)
         {
@@ -137,6 +147,24 @@ namespace Hangfire
         {
             changedFields = GetChangedFields(out nextExecution);
             return changedFields.Count > 0 || nextExecution != NextExecution;
+        }
+
+        public void ScheduleRetry(TimeSpan delay, out IReadOnlyDictionary<string, string> changedFields, out DateTime? nextExecution)
+        {
+            RetryAttempt++;
+            nextExecution = _now.Add(delay);
+
+            var result = new Dictionary<string, string>
+            {
+                { "RetryAttempt", RetryAttempt.ToString(CultureInfo.InvariantCulture) }
+            };
+            
+            if (!_recurringJob.ContainsKey("V"))
+            {
+                result.Add("V", "2");
+            }
+
+            changedFields = result;
         }
 
         public void Disable([NotNull] Exception error, out IReadOnlyDictionary<string, string> changedFields, out DateTime? nextExecution)
@@ -223,7 +251,17 @@ namespace Hangfire
                 result.Add("Error", String.Empty);
             }
 
+            if (_recurringJob.ContainsKey("RetryAttempt") && _recurringJob["RetryAttempt"] != "0")
+            {
+                result.Add("RetryAttempt", "0");
+            }
+
             return result;
+        }
+
+        public override string ToString()
+        {
+            return String.Join(";", _recurringJob.Select(x => $"{x.Key}:{x.Value}"));
         }
 
         public static CronExpression ParseCronExpression([NotNull] string cronExpression)
