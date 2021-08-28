@@ -20,7 +20,7 @@
   <ItemGroup>
     <PackageReference Include="MoreLinq.Source.MoreEnumerable.Pairwise" Version="1.0.1" />
     <PackageReference Include="LibLog" Version="1.5.0" />
-    <PackageReference Include="Cronos" Version="0.7.0" />
+    <PackageReference Include="Cronos" Version="0.7.1" />
     <PackageReference Include="StackTraceFormatter.Source" Version="1.1.0" />
     <PackageReference Include="StackTraceParser.Source" Version="1.3.0" />
   </ItemGroup>
@@ -58,7 +58,7 @@
   <!-- Full MSBuild is required to generate Razor classes -->
   <PropertyGroup>
     <MSBuild14FullPath>$(MSBuildProgramFiles32)\MSBuild\14.0\bin\MSBuild.exe</MSBuild14FullPath>
-    <MSBuildCurrentFullPath>$(MSBuildProgramFiles32)\MSBuild\Current\bin\MSBuild.exe</MSBuildCurrentFullPath>
+    <MSBuildCurrentFullPath>$(MSBuildBinPath)\MSBuild.exe</MSBuildCurrentFullPath>
     <RazorProjectFile>Razor.build</RazorProjectFile>
     <InnerTargets>GenerateRazorClasses;Build</InnerTargets>
   </PropertyGroup>
@@ -71,6 +71,7 @@
   
   <ItemGroup>
     <EmbeddedResource Include="Dashboard\Content\css\bootstrap.min.css" />
+    <EmbeddedResource Include="Dashboard\Content\css\Chart.min.css" />
     <EmbeddedResource Include="Dashboard\Content\css\hangfire.css" />
     <EmbeddedResource Include="Dashboard\Content\fonts\glyphicons-halflings-regular.eot" />
     <EmbeddedResource Include="Dashboard\Content\fonts\glyphicons-halflings-regular.svg" />
@@ -79,8 +80,7 @@
     <EmbeddedResource Include="Dashboard\Content\fonts\glyphicons-halflings-regular.woff2" />
     <EmbeddedResource Include="Dashboard\Content\js\bootstrap.min.js" />
     <EmbeddedResource Include="Dashboard\Content\js\hangfire.js" />
-    <EmbeddedResource Include="Dashboard\Content\js\moment.min.js" />
-    <EmbeddedResource Include="Dashboard\Content\js\jquery-2.1.4.min.js" />
+    <EmbeddedResource Include="Dashboard\Content\js\jquery-3.6.0.min.js" />
     <EmbeddedResource Include="Dashboard\Content\js\moment-with-locales.min.js" />
     <EmbeddedResource Include="Dashboard\Content\js\Chart.min.js" />
     <EmbeddedResource Include="Dashboard\Content\js\chartjs-plugin-streaming.min.js" />

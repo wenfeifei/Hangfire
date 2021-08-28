@@ -7,6 +7,7 @@
     <authors>Sergey Odinokov</authors>
     <owners>odinserj</owners>
     <projectUrl>https://www.hangfire.io/</projectUrl>
+    <repository type="git" url="https://github.com/HangfireIO/Hangfire.git" />
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <licenseUrl>https://raw.github.com/HangfireIO/Hangfire/master/LICENSE.md</licenseUrl>
     <summary>An easy way to perform fire-and-forget, delayed and recurring tasks inside ASP.NET applications. No Windows Service required.</summary>
@@ -15,11 +16,127 @@ An easy and reliable way to perform fire-and-forget, delayed and recurring, long
 Backed by Redis, SQL Server, SQL Azure or MSMQ. This is a .NET alternative to Sidekiq, Resque and Celery.
 https://www.hangfire.io/
     </description>
-    <copyright>Copyright © 2013-2019 Sergey Odinokov</copyright>
+    <copyright>Copyright © 2013-2021 Sergey Odinokov</copyright>
     <tags>Hangfire OWIN Long-Running Background Fire-And-Forget Delayed Recurring Tasks Jobs Scheduler Threading Queues</tags>
     <releaseNotes>https://www.hangfire.io/blog/
 
 Please see https://docs.hangfire.io/en/latest/upgrade-guides/upgrading-to-hangfire-1.7.html to learn how to upgrade from 1.6.X.
+
+1.7.25
+• Changed – Upgrade Bootstrap from 3.3.7 to version 3.4.1 in Dashboard UI.
+• Changed – Upgrade Chart.js from 2.7.3 to version 2.9.4 in Dashboard UI.
+• Changed – Upgrade jQuery from 2.2.4 to version 3.6.0 in Dashboard UI.
+• Fixed – Check background job existence before adding a continuation id to job parameters.
+• Fixed – Incorrect validation for the `HeartbeatInterval` option (by @GitHubPang).
+• Fixed – Use better stacking for succeeded/failed charts in the Dashboard UI.
+• Fixed – Move explicit styles to CSS to fix possible CSP errors in Dashboard UI.
+• Fixed – Reset default sync auth filter when async one is specified in Dashboard UI.
+
+1.7.24
+• Added – Support for async auth methods via the `DashboardOptions.AsyncAuthorization` property (by @rosenbjerg).
+• Fixed – Error alert in Dashboard UI is now correctly shown when sidebar is present (by @danillewin).
+• Fixed – Reference an empty favicon in Dashboard UI to prevent backend 404s (by @dan2468).
+• Fixed – Back-to-site link text in Dashboard UI is now hidden on small screens (by @danillewin).
+• Fixed – Avoid memory leak in the `AppBuilderExtensions` class (by @LordJZ).
+• Fixed – Make the `TypeHelper` class public instead of internal to use it outside.
+
+1.7.23
+• Added – `JobId` property to `JobPerformanceException` for error logging purposes (by @Plasma).
+• Fixed – `JsonSerializationException` when using `IdempotentCompletionAttribute`.
+• Fixed – Unreported yet corner case related to daylight time transition by upgrading Cronos to 0.7.1 (by @aidmsu).
+• Fixed – Dashboard issue: recurring job table doesn't handle very long cron strings.
+• Fixed – Add missing argument-is-null check for the `DeserializePayload` method.
+• Project – Replace deprecated `PerformContext` ctor usage to avoid alerts in SonarQube (by @kumaheiyama).
+• Project – Avoid possible `NullReferenceException` in tests to fix alerts in Fortify analyser.
+• Project – Release connections properly in tests to fix alerts in Fortify analyser.
+
+1.7.22
+• Fixed – Fonts-related regression in Dashboard UI after upgrading Bootstrap in 1.7.21.
+
+1.7.21
+• Changed – Upgrade jQuery from 2.1.4 to 2.2.4 in Dashboard UI.
+• Changed – Upgrade Bootstrap from 3.3.5 to 3.3.7 in Dashboard UI.
+• Changed – Upgrade Moment.js to 2.29.1 in Dashboard UI.
+• Project – Update RazorGenerator.MsBuild package from 2.4.7 to version 2.5.0.
+• Project – Update 7-Zip.CommandLine package from 9.20.0 to version 18.1.0.
+
+1.7.20
+• Added – Norwegian translations (by @khellang).
+• Fixed – Correction on brazilian portuguese translations (by @Prestini).
+• Fixed – Changing time zone of recurring job without changing cron expression causes immediate execution.
+
+1.7.19
+• Added – German (Deutsch) Dashboard UI localization (by @d-oit).
+• Added – `IGlobalConfiguration.UseMaxArgumentSizeToRender` method to avoid "VALUE TOO BIG" messages.
+• Changed – Remove "readonly" keyword from the `JobMethodCallRenderer.MaxArgumentToRenderSize` field to support .NET 5.0.
+• Fixed – Race condition in `AspNetShutdownDetector` leads to `NullReferenceException` (by @jr01).
+• Fixed – Avoid ArgumentException: Item has already been added when preserving an original exception.
+• Project – Add repository link to nuspec files (by @jeremyhayes).
+
+1.7.15
+• Added – `IGlobalConfiguration.UseMaxLinesInExceptionDetails` option to cap the size of stack traces.
+• Changed – Only the first 100 lines of a stack trace will be preserved now by default in Failed state.
+• Fixed – Don't let exceptions with huge stack traces take up too much storage space.
+
+1.7.13
+• Added – Catalan translation for Dashboard UI (based on Spanish translation, by @agausachs).
+• Added – Support for configuring recommended serializer settings via callback (by @Yaevh).
+• Fixed – Use correct wording for job parameters in Job Details page, add it to resources.
+• Fixed – Don't push negative points to the realtime graph in dashboard.
+• Fixed – Don't depend on history collection type returned from Storage API.
+• Project – Execute tests one by one to ensure exit code isn't being lost (by @willchis).
+
+1.7.12
+• Added – Display actual job payload and exception message on job details page when could find the method.
+• Added – French translation for Dashboard UI (by @PaulARoy).
+• Added – Expose IStorageConnection.GetRecurringJobs(IEnumerable ids) to public.
+• Changed – Bump thread priority in heartbeat process for constrained environments.
+• Changed – Display job properties in a dedicated row in job details page.
+• Fixed – Avoid storage round-trip when displaying continuations on job details page.
+
+1.7.11
+• Added – Display recurring job exceptions directly in the Dashboard UI.
+• Added – Add built-in support for reliable shutdown detection of ASP.NET apps.
+• Changed – Unify exception handling in recurring job scheduler.
+• Changed – Internal feature to perform state changes without calling any filters.
+• Changed – Decrease the number of retry attempts for recurring jobs to 5.
+• Fixed – Let workers to ignore any state change filters when all previous attempts to call them failed.
+• Fixed – Don't let `RecurringJobScheduler` to stall the pipeline when extension filters throw an exception.
+• Fixed – Don't let `DelayedJobScheduler` to stall the pipeline when state filters throw an exception.
+• Fixed – `JobLoadException` when new methods deployed, caused by overlapped recycles in ASP.NET applications.
+• Fixed – Configuration changes aren't taken into account, caused by overlapped recycles in ASP.NET.
+• Fixed – Zombie servers shown on the "Servers" page that aren't stopped automatically unless app pool is recycled.
+• Fixed – Pass the whole exception to the `Error` field of a recurring job.
+• Fixed – Re-schedule recurring jobs with unsupported versions, instead of stopping the pipeline.
+• Fixed – Don't stumble over non-existing recurring jobs in a scheduler.
+• Fixed – Add another check before removing non-existing jobs from delayed jobs to avoid race conditions.
+• Fixed – Avoid throwing `NullReferenceException` instead of `InvalidOperationException` when deserializing a job.
+• Fixed – Don't transform queue names to upper case in the Dashboard UI.
+
+1.7.10
+• Added – Farsi translation for Dashboard UI (by @sepehr1101).
+• Added – Portuguese translation for Dashboard UI (by @GeErghon).
+• Added – `PrefixPath` in `DashboardOptions` (by @shenjielx).
+• Added – Allow `PageUrl` to be overridden by subclass (by @brendonparker).
+
+1.7.9
+• Fixed – Additional Chinese translation for Dashboard UI (by @brookqin).
+• Fixed – Added `null` checks for expired failed jobs in Dashboard UI (by @ppkale1995-cimpress).
+• Fixed – Add word break to definition lists for state cards in Dashboard UI.
+• Fixed – Render long recurring job identifiers correctly in Dashboard UI.
+
+1.7.8
+• Added – `IGlobalConfiguration.UseResultsInContinuations` method to globally enable results for continuations.
+• Added – Ability to push antecedent job's result to continuations via job parameters with `ContinuationsSupport`.
+• Added – `JobParameterInjectionFilter` server filter to inject job parameters as arguments.
+• Added – Allow to specify a custom thread factory in `UseBackgroundPool` methods.
+• Changed – Add retry attempts for recurring jobs instead of immediately disabling them.
+• Fixed – `CultureInfo.InvariantCulture` is now restored properly in background jobs.
+• Fixed – Recurring jobs aren't triggered early after changing their cron expressions.
+• Fixed – Don't trigger recurring job when it can't be scheduled due to errors.
+• Fixed – Argument with a `null` value is skipped when displaying job arguments in Dashboard UI.
+• Fixed – Add a workaround for resolving `System.Diagnostics.Debug` type in .NET Core 3.0.
+• Deprecated – Deprecate the `JobActivatorScope.InnerScope` property as it wasn't implemented.
 
 1.7.7
 
@@ -32,7 +149,7 @@ Core
 
 Dashboard UI
 • Added – Allow modification of the Dashboard UI title (by @tbertenshaw).
-• Added – Support for HTML tags on the Dashboard UI title (by @caioproiete).
+• Added – Support for HTML tags on the Dashboard UI title (by @augustoproiete).
 • Added – Buttons for 1,000 and 5,000 items per page in dashboard.
 • Added – Links to previous/next pages to the top of the dashboard page.
 • Changed – Expose the `RazorPage.Context` property as a public member.
@@ -40,7 +157,7 @@ Dashboard UI
 • Fixed – Don't update real-time chart when too much time passed since the last update.
 
 1.7.6
-• Changed – Add support for dash characters (`-`) in queue names (by @caioproiete).
+• Changed – Add support for dash characters (`-`) in queue names (by @augustoproiete).
 • Fixed – Show actual error in Dashboard UI when recurring job can't be scheduled.
 • Fixed – Ensure backward compatibility when JSON payloads are serialized with field names only.
 • Fixed – Non-awaited continuations can bring down the whole app when `TaskScheduler` is set to `null`.

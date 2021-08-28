@@ -31,7 +31,8 @@ namespace Hangfire.Dashboard
 {
     internal static class JobMethodCallRenderer
     {
-        private static readonly int MaxArgumentToRenderSize = 4096;
+        // Should not be converted to "readonly" to support https://github.com/HangfireIO/Hangfire/issues/1295
+        internal static int MaxArgumentToRenderSize = 4096;
 
         public static NonEscapedString Render(Job job)
         {
@@ -140,7 +141,7 @@ namespace Hangfire.Dashboard
                         var renderedItems = new List<string>();
 
                         // ReSharper disable once LoopCanBeConvertedToQuery
-                        foreach (var item in (IEnumerable)argumentValue)
+                        foreach (var item in argumentValue as IEnumerable)
                         {
                             var argumentRenderer = ArgumentRenderer.GetRenderer(enumerableArgument);
                             renderedItems.Add(argumentRenderer.Render(isJson, item?.ToString(),
@@ -261,13 +262,14 @@ namespace Hangfire.Dashboard
             public string Render(bool isJson, string deserializedValue, string rawValue)
             {
                 var builder = new StringBuilder();
+
+                if (rawValue == null)
+                {
+                    return WrapKeyword("null");
+                }
+
                 if (_deserializationType != null)
                 {
-                    if (rawValue == null)
-                    {
-                        return WrapKeyword("null");
-                    }
-
                     builder.Append(WrapIdentifier(
                         isJson ? "FromJson" : "Deserialize"));
 

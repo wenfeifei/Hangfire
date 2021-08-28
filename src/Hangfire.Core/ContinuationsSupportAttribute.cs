@@ -34,26 +34,46 @@ namespace Hangfire
 
         private readonly ILog _logger = LogProvider.For<ContinuationsSupportAttribute>();
 
+        private readonly bool _pushResults;
         private readonly HashSet<string> _knownFinalStates;
         private readonly IBackgroundJobStateChanger _stateChanger;
 
         public ContinuationsSupportAttribute()
-            : this(new HashSet<string> { DeletedState.StateName, SucceededState.StateName })
+            : this(false)
+        {
+        }
+
+        public ContinuationsSupportAttribute(bool pushResults)
+            : this(pushResults, new HashSet<string> { DeletedState.StateName, SucceededState.StateName })
         {
         }
 
         public ContinuationsSupportAttribute(HashSet<string> knownFinalStates)
-            : this(knownFinalStates, new BackgroundJobStateChanger())
+            : this(false, knownFinalStates)
+        {
+        }
+
+        public ContinuationsSupportAttribute(bool pushResults, HashSet<string> knownFinalStates)
+            : this(pushResults, knownFinalStates, new BackgroundJobStateChanger())
         {
         }
 
         public ContinuationsSupportAttribute(
+            [NotNull] HashSet<string> knownFinalStates,
+            [NotNull] IBackgroundJobStateChanger stateChanger)
+            : this(false, knownFinalStates, stateChanger)
+        {
+        }
+
+        public ContinuationsSupportAttribute(
+            bool pushResults,
             [NotNull] HashSet<string> knownFinalStates, 
             [NotNull] IBackgroundJobStateChanger stateChanger)
         {
             if (knownFinalStates == null) throw new ArgumentNullException(nameof(knownFinalStates));
             if (stateChanger == null) throw new ArgumentNullException(nameof(stateChanger));
 
+            _pushResults = pushResults;
             _knownFinalStates = knownFinalStates;
             _stateChanger = stateChanger;
 
@@ -109,6 +129,16 @@ namespace Hangfire
             // multiple threads add continuation to the same parent job.
             using (connection.AcquireDistributedJobLock(parentId, AddJobLockTimeout))
             {
+                var jobData = connection.GetJobData(parentId);
+                if (jobData == null)
+                {
+                    // When we try to add a continuation for a removed job,
+                    // the system should throw an exception instead of creating
+                    // corrupted state.
+                    throw new InvalidOperationException(
+                        $"Can not add a continuation: parent background job '{parentId}' does not exist.");
+                }
+
                 var continuations = GetContinuations(connection, parentId);
 
                 // Continuation may be already added. This may happen, when outer transaction
@@ -124,22 +154,17 @@ namespace Hangfire
                     SetContinuations(connection, parentId, continuations);
                 }
 
-                var jobData = connection.GetJobData(parentId);
-                if (jobData == null)
-                {
-                    // When we try to add a continuation for a removed job,
-                    // the system should throw an exception instead of creating
-                    // corrupted state.
-                    throw new InvalidOperationException(
-                        $"Can not add a continuation: parent background job '{parentId}' does not exist.");
-                }
-
                 var currentState = connection.GetStateData(parentId);
 
                 if (currentState != null && _knownFinalStates.Contains(currentState.Name))
                 {
                     var startImmediately = !awaitingState.Options.HasFlag(JobContinuationOptions.OnlyOnSucceededState) ||
                         currentState.Name == SucceededState.StateName;
+
+                    if (_pushResults && currentState.Data.TryGetValue("Result", out var antecedentResult))
+                    {
+                        context.Connection.SetJobParameter(context.BackgroundJob.Id, "AntecedentResult", antecedentResult);
+                    }
 
                     context.CandidateState = startImmediately
                         ? awaitingState.NextState
@@ -202,8 +227,21 @@ namespace Hangfire
                 }
             }
             
+            string antecedentResult = null;
+
+            if (_pushResults)
+            {
+                var serializedData = context.CandidateState.SerializeData();
+                serializedData.TryGetValue("Result", out antecedentResult);
+            }
+
             foreach (var tuple in nextStates)
             {
+                if (antecedentResult != null)
+                {
+                    context.Connection.SetJobParameter(tuple.Key, "AntecedentResult", antecedentResult);
+                }
+
                 _stateChanger.ChangeState(new StateChangeContext(
                     context.Storage,
                     context.Connection,

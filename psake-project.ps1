@@ -32,7 +32,13 @@ Task Test -Depends Merge -Description "Run unit and integration tests against me
     # the same assemblies that are distributed to users. Since the `dotnet test` command doesn't support
     # the `--no-dependencies` command directly, we need to re-build tests themselves first.
     Exec { ls "tests\**\*.csproj" | % { dotnet build -c Release --no-dependencies $_.FullName } }
-    Exec { ls "tests\**\*.csproj" | % { dotnet test -c Release --no-build $_.FullName } }
+
+    # We are running unit test project one by one, because pipelined version like the line above does not
+    # support halting the whole execution pipeline when "dotnet test" command fails due to a failed test,
+    # silently allowing build process to continue its execution even with failed tests.
+    Exec { dotnet test -c Release --no-build "tests\Hangfire.Core.Tests" }
+    Exec { dotnet test -c Release --no-build "tests\Hangfire.SqlServer.Tests" }
+    Exec { dotnet test -c Release --no-build "tests\Hangfire.SqlServer.Msmq.Tests" }
 }
 
 Task Collect -Depends Test -Description "Copy all artifacts to the build folder." {
@@ -53,6 +59,9 @@ Task Collect -Depends Test -Description "Copy all artifacts to the build folder.
     Collect-Assembly "Hangfire.NetCore" "netstandard2.0"
     
     Collect-Assembly "Hangfire.AspNetCore" "net461"
+
+    Collect-Assembly "Hangfire.AspNetCore" "netcoreapp3.0"
+    Collect-Assembly "Hangfire.NetCore" "netcoreapp3.0"
     
     Collect-Content "content\readme.txt"
     Collect-Tool "src\Hangfire.SqlServer\DefaultInstall.sql"

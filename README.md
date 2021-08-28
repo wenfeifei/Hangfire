@@ -1,7 +1,7 @@
 Hangfire 
 =========
 
-[![Official Site](https://img.shields.io/badge/site-hangfire.io-blue.svg)](http://hangfire.io) [![Latest version](https://img.shields.io/nuget/v/Hangfire.svg)](https://www.nuget.org/packages?q=hangfire) [![License LGPLv3](https://img.shields.io/badge/license-LGPLv3-green.svg)](http://www.gnu.org/licenses/lgpl-3.0.html) [![codecov](https://codecov.io/gh/HangfireIO/Hangfire/branch/master/graph/badge.svg)](https://codecov.io/gh/HangfireIO/Hangfire) [![Coverity Scan Build Status](https://scan.coverity.com/projects/4423/badge.svg)](https://scan.coverity.com/projects/hangfireio-hangfire)
+[![Official Site](https://img.shields.io/badge/site-hangfire.io-blue.svg)](http://hangfire.io) [![Latest version](https://img.shields.io/nuget/v/Hangfire.svg)](https://www.nuget.org/packages?q=hangfire) [![License LGPLv3](https://img.shields.io/badge/license-LGPLv3-green.svg)](http://www.gnu.org/licenses/lgpl-3.0.html)
 
 ## Build Status
 
@@ -118,7 +118,7 @@ Open-source projects develop more smoothly when discussions are public.
 
 If you have any questions, problems related to Hangfire usage or if you want to discuss new features, please visit the [discussion forum](http://discuss.hangfire.io). You can sign in there using your existing Google or GitHub account, so it's very simple to start using it.
 
-If you've discovered a bug, please report it to the [Hangfire GitHub Issues](https://github.com/HangfireIO/Hangfire/issues?state=open). Detailed reports with stack traces, actual and expected behavours are welcome.
+If you've discovered a bug, please report it to the [Hangfire GitHub Issues](https://github.com/HangfireIO/Hangfire/issues?state=open). Detailed reports with stack traces, actual and expected behaviours are welcome.
 
 Related Projects
 -----------------
@@ -159,10 +159,15 @@ Hangfire uses [psake](https://github.com/psake/psake) build automation tool. All
 
 Razor templates are compiled upon save with the [Razor Generator Visual Studio extension](https://marketplace.visualstudio.com/items?itemName=DavidEbbo.RazorGenerator).  You will need this installed if you want to modify the Dashboard UI.
 
+Reporting security issues 
+--------------------------
+
+In order to give the community time to respond and upgrade we strongly urge you report all security issues privately. Please email us at [security@hangfire.io](mailto:security@hangfire.io) with details and we will respond ASAP. Security issues always take precedence over bug fixes and feature work. We can and do mark releases as "urgent" if they contain serious security fixes. 
+
 License
 --------
 
-Copyright © 2013-2016 Sergey Odinokov.
+Copyright © 2013-2021 Sergey Odinokov.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by

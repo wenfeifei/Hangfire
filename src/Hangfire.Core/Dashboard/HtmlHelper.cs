@@ -180,13 +180,26 @@ namespace Hangfire.Dashboard
 
         public NonEscapedString StateLabel(string stateName)
         {
+            return StateLabel(stateName, stateName);
+        }
+
+        public NonEscapedString StateLabel(string stateName, string text, bool hover = false)
+        {
             if (String.IsNullOrWhiteSpace(stateName))
             {
                 return Raw($"<em>{HtmlEncode(Strings.Common_NoState)}</em>");
             }
 
             var style = $"background-color: {JobHistoryRenderer.GetForegroundStateColor(stateName)};";
-            return Raw($"<span class=\"label label-default\" style=\"{HtmlEncode(style)}\">{HtmlEncode(stateName)}</span>");
+            var cssSuffix = JobHistoryRenderer.GetStateCssSuffix(stateName);
+            var cssHover = hover ? "label-hover" : null;
+
+            if (cssSuffix != null)
+            {
+                return Raw($"<span class=\"label label-default {cssHover} label-state-{HtmlEncode(cssSuffix)}\">{HtmlEncode(text)}</span>");
+            }
+
+            return Raw($"<span class=\"label label-default {cssHover}\" style=\"{HtmlEncode(style)}\">{HtmlEncode(text)}</span>");
         }
 
         public NonEscapedString JobIdLink(string jobId)
@@ -281,7 +294,7 @@ namespace Hangfire.Dashboard
         public NonEscapedString QueueLabel(string queue)
         {
             var label = queue != null 
-                ? $"<a class=\"text-uppercase\" href=\"{HtmlEncode(_page.Url.Queue(queue))}\">{HtmlEncode(queue)}</a>" 
+                ? $"<a href=\"{HtmlEncode(_page.Url.Queue(queue))}\">{HtmlEncode(queue)}</a>" 
                 : $"<span class=\"label label-danger\"><i>{HtmlEncode(Strings.Common_Unknown)}</i></span>";
 
             return new NonEscapedString(label);

@@ -439,6 +439,53 @@ namespace Hangfire.Core.Tests
         }
 
         [Fact]
+        public void AddOrUpdate_UsesCurrentTime_InsteadOfLastExecution_ToCalculateNextExecution_WhenChangingCronExpression()
+        {
+            // Arrange
+            _connection.Setup(x => x.GetAllEntriesFromHash($"recurring-job:{_id}")).Returns(new Dictionary<string, string>
+            {
+                { "Cron", "30 12 * * *" },
+                { "Job", InvocationData.Serialize(_job).SerializePayload() },
+                { "LastExecution", JobHelper.SerializeDateTime(_now.AddHours(-3)) }
+            });
+
+            var manager = CreateManager();
+
+            // Act
+            manager.AddOrUpdate(_id, _job, "30 13 * * *");
+
+            // Assert
+            _transaction.Verify(x => x.SetRangeInHash($"recurring-job:{_id}", It.Is<Dictionary<string, string>>(dict =>
+                JobHelper.DeserializeDateTime(dict["NextExecution"]) == _now.AddHours(22))));
+            _transaction.Verify(x => x.AddToSet("recurring-jobs", _id, JobHelper.ToTimestamp(_now.AddHours(22))));
+            _transaction.Verify(x => x.Commit());
+        }
+
+        [Fact]
+        public void AddOrUpdate_UsesCurrentTime_InsteadOfLastExecution_ToCalculateNextExecution_WhenChangingTimeZone()
+        {
+            // Arrange
+            _connection.Setup(x => x.GetAllEntriesFromHash($"recurring-job:{_id}")).Returns(new Dictionary<string, string>
+            {
+                { "Cron", "30 13 * * *" },
+                { "Job", InvocationData.Serialize(_job).SerializePayload() },
+                { "TimeZoneId", PlatformHelper.IsRunningOnWindows() ? "Pacific/Honolulu" : "Hawaiian Standard Time" },
+                { "LastExecution", JobHelper.SerializeDateTime(_now.AddDays(-3)) }
+            });
+
+            var manager = CreateManager();
+
+            // Act
+            manager.AddOrUpdate(_id, _job, "30 13 * * *", TimeZoneInfo.Utc);
+
+            // Assert
+            _transaction.Verify(x => x.SetRangeInHash($"recurring-job:{_id}", It.Is<Dictionary<string, string>>(dict =>
+                JobHelper.DeserializeDateTime(dict["NextExecution"]) == _now.AddHours(22))));
+            _transaction.Verify(x => x.AddToSet("recurring-jobs", _id, JobHelper.ToTimestamp(_now.AddHours(22))));
+            _transaction.Verify(x => x.Commit());
+        }
+
+        [Fact]
         public void Trigger_ThrowsAnException_WhenIdIsNull()
         {
             var manager = CreateManager();
@@ -549,6 +596,28 @@ namespace Hangfire.Core.Tests
                 dict["NextExecution"] == JobHelper.SerializeDateTime(_now.AddMinutes(1)))));
             _transaction.Verify(x => x.AddToSet("recurring-jobs", _id, JobHelper.ToTimestamp(_now.AddMinutes(1))));
             _transaction.Verify(x => x.Commit());
+        }
+
+        [Fact]
+        public void Trigger_ThrowsAnException_WhenRecurringJobCanNotBeTriggered_AndDoesNotCreateBackgroundJob()
+        {
+            // Arrange
+            _timeZoneResolver.Setup(x => x.GetTimeZoneById(It.IsAny<string>())).Throws<Exception>();
+            _connection.Setup(x => x.GetAllEntriesFromHash($"recurring-job:{_id}"))
+                .Returns(new Dictionary<string, string>
+                {
+                    { "Job", JobHelper.ToJson(InvocationData.Serialize(Job.FromExpression(() => Console.WriteLine()))) },
+                    { "Cron", Cron.Minutely() },
+                    { "TimeZoneId", "UnexistingID" }
+                });
+
+            var manager = CreateManager();
+
+            // Act
+            Assert.Throws<AggregateException>(() => manager.Trigger(_id));
+
+            // Assert
+            _stateMachine.Verify(x => x.ApplyState(It.IsAny<ApplyStateContext>()), Times.Never);
         }
 
         [Fact]

@@ -24,7 +24,7 @@ using System.Threading;
 
 namespace Hangfire.Common
 {
-    internal class TypeHelper
+    public class TypeHelper
     {
         private static readonly ConcurrentDictionary<Type, string> TypeSerializerCache = new ConcurrentDictionary<Type, string>();
 
@@ -220,6 +220,11 @@ namespace Hangfire.Common
 
         private static Type TypeResolver(Assembly assembly, string typeName, bool ignoreCase)
         {
+            if (typeName.Equals("System.Diagnostics.Debug", StringComparison.Ordinal))
+            {
+                return typeof(System.Diagnostics.Debug);
+            }
+
             assembly = assembly ?? typeof(int).GetTypeInfo().Assembly;
             return assembly.GetType(typeName, true, ignoreCase);
         }
