@@ -1,5 +1,4 @@
-﻿// This file is part of Hangfire.
-// Copyright © 2013-2014 Sergey Odinokov.
+﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -283,7 +282,7 @@ namespace Hangfire
         /// </summary>
         /// 
         /// <param name="jobId">An identifier, that will be used to find a job.</param>
-        /// <returns>True on a successfull state transition, false otherwise.</returns>
+        /// <returns>True on a successful state transition, false otherwise.</returns>
         public static bool Delete([NotNull] string jobId)
         {
             var client = ClientFactory();

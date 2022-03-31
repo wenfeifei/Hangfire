@@ -16,11 +16,26 @@ An easy and reliable way to perform fire-and-forget, delayed and recurring, long
 Backed by Redis, SQL Server, SQL Azure or MSMQ. This is a .NET alternative to Sidekiq, Resque and Celery.
 https://www.hangfire.io/
     </description>
-    <copyright>Copyright © 2013-2021 Sergey Odinokov</copyright>
+    <copyright>Copyright © 2022 Hangfire OÜ</copyright>
     <tags>Hangfire OWIN Long-Running Background Fire-And-Forget Delayed Recurring Tasks Jobs Scheduler Threading Queues</tags>
     <releaseNotes>https://www.hangfire.io/blog/
 
 Please see https://docs.hangfire.io/en/latest/upgrade-guides/upgrading-to-hangfire-1.7.html to learn how to upgrade from 1.6.X.
+
+1.7.28
+• Fixed – Reduce the number of attempts in `BackgroundJobStateChanger` to avoid infinite loops.
+• Fixed – Typos in German translation (by @saxx).
+• Fixed – Translations in Turkish translation (by @can-zengin).
+
+1.7.27
+• Added – Turkish language support for the Dashboard UI (by @csarigul).
+• Fixed – Trigger button in the Dashboard UI doesn't respect a custom time zone resolver.
+• Fixed – Dispatchers stopped when unable to add the ExecutionId data for an exception instance.
+• Fixed – Safari's zoom feature breaks the Dashboard UI (by @oguzhantopcu).
+• Fixed – Some typos in XML documentation comments (by @GitHubPang).
+
+1.7.26
+• Security – Fix "Dashboard UI accessible from outside by default since 1.7.25" regression.
 
 1.7.25
 • Changed – Upgrade Bootstrap from 3.3.7 to version 3.4.1 in Dashboard UI.
@@ -322,9 +337,9 @@ Dashboard UI
     <file src="..\src\Hangfire.Core\**\*.cs;..\src\Hangfire.Core\**\*.cshtml" target="src" exclude="**\obj*\**\*.cs" />
 
     <file src="LICENSE.md" />
-    <file src="NOTICES" />
     <file src="COPYING" />
     <file src="COPYING.LESSER" />
+    <file src="NOTICES" />
     <file src="LICENSE_STANDARD" />
     <file src="LICENSE_ROYALTYFREE" />
   </files>

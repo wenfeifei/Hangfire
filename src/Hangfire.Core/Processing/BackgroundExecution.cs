@@ -1,5 +1,4 @@
-﻿// This file is part of Hangfire.
-// Copyright © 2017 Sergey Odinokov.
+﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -271,7 +270,7 @@ namespace Hangfire.Processing
             // Looks weird, but several times I was initializing the nextDelay variable
             // inside the execution loop by mistake. This lead to immediate looped invocation
             // with no delays and 100% of CPU consumption on transient exceptions, that is
-            // completely unnacceptable. So this is just a defensive technique.
+            // completely unacceptable. So this is just a defensive technique.
             initialDelay = TimeSpan.Zero;
         }
 
@@ -324,7 +323,7 @@ namespace Hangfire.Processing
                 {
                     // .NET Core doesn't support both Thread.Abort and Thread.ResetAbort methods.
                     // I don't see any possible cases, where thread is aborted, but nevertheless
-                    // we shouldn't hide the orignial exception.
+                    // we shouldn't hide the original exception.
                     _logger.ErrorException($"{GetExecutionLoopTemplate(executionId)} was unable to reset thread abort request due to an exception. Background execution can be prematurely stopped.", ex);
                 }
             }
@@ -336,9 +335,21 @@ namespace Hangfire.Processing
                 return;
             }
 
-            if (!exception.Data.Contains("ExecutionId"))
+            try
             {
-                exception.Data.Add("ExecutionId", executionId);
+                // Some code might cache exception object and throw the same instance
+                // from multiple threads, despite it's not recommended to do. However
+                // bad things happen, and we should have some diagnostic tools to
+                // understand what's happened and what was the original exception which
+                // is being modified.
+                if (!exception.Data.Contains("ExecutionId"))
+                {
+                    exception.Data.Add("ExecutionId", executionId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.WarnException($"Was unable to add the ExecutionId property to the exception object, please see inner exception for details. Original exception: ${exception.GetType()} (${exception.Message})", ex);
             }
 
             ToFailedState(exception, out delay);

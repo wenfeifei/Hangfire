@@ -1,5 +1,4 @@
-﻿// This file is part of Hangfire.
-// Copyright © 2013-2014 Sergey Odinokov.
+﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -23,8 +22,7 @@ using Hangfire.States;
 namespace Hangfire
 {
     /// <summary>
-    /// Provides methods for creating all the types of background jobs and 
-    /// changing their states.
+    /// Provides methods for creating background jobs and changing their states.
     /// </summary>
     /// 
     /// <remarks>

@@ -1,5 +1,4 @@
-﻿// This file is part of Hangfire.
-// Copyright © 2013-2014 Sergey Odinokov.
+﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -32,8 +31,8 @@ namespace Hangfire
         {
             AppPath = "/";
             PrefixPath = string.Empty;
+            _asyncAuthorization = new IDashboardAsyncAuthorizationFilter[0];
             Authorization = DefaultAuthorization;
-            AsyncAuthorization = new IDashboardAsyncAuthorizationFilter[0];
             IsReadOnlyFunc = _ => false;
             StatsPollingInterval = 2000;
             DisplayStorageConnectionString = true;

@@ -1,5 +1,4 @@
-﻿// This file is part of Hangfire.
-// Copyright © 2013-2014 Sergey Odinokov.
+﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -68,7 +67,7 @@ namespace Hangfire.States
         public static readonly string StateName = "Failed";
 
         /// <summary>
-        /// Initializes a new instace of the <see cref="FailedState"/> class
+        /// Initializes a new instance of the <see cref="FailedState"/> class
         /// with the given exception.
         /// </summary>
         /// <param name="exception">Exception that occurred during the background 
