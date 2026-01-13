@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -96,6 +96,24 @@ namespace Hangfire.Common
             _filters.RemoveAll(x => x.Instance == filter);
         }
 
+        /// <summary>
+        /// Remove all filters of the specified type with strict type matching.
+        /// </summary>
+        /// <typeparam name="T">Type of filters to remove.</typeparam>
+        public void Remove<T>()
+        {
+            Remove(typeof(T));
+        }
+
+        /// <summary>
+        /// Remove all filters of the specified type with strict type matching.
+        /// </summary>
+        /// <param name="type">Type of filters to remove.</param>
+        public void Remove(Type type)
+        {
+            _filters.RemoveAll(x => type == x.Instance.GetType());
+        }
+
         public IEnumerator<JobFilter> GetEnumerator()
         {
             return _filters.GetEnumerator();
@@ -103,7 +121,7 @@ namespace Hangfire.Common
 
         IEnumerable<JobFilter> IJobFilterProvider.GetFilters(Job job)
         {
-            return this;
+            return _filters;
         }
 
         IEnumerator IEnumerable.GetEnumerator()

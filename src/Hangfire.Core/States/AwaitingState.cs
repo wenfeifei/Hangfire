@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -64,6 +64,7 @@ namespace Hangfire.States
         /// </summary>
         /// <param name="parentId">The identifier of a background job to wait for.</param>
         /// <param name="nextState">The next state for the continuation.</param>
+        // TODO: Warning inconsistency - everywhere else is OnlyOnSucceededState
         public AwaitingState([NotNull] string parentId, [NotNull] IState nextState)
             : this(parentId, nextState, JobContinuationOptions.OnAnyFinishedState)
         {
@@ -218,11 +219,15 @@ namespace Hangfire.States
             return result;
         }
 
-        internal class Handler : IStateHandler
+        internal sealed class Handler : IStateHandler
         {
             public void Apply(ApplyStateContext context, IWriteOnlyTransaction transaction)
             {
-                transaction.AddToSet("awaiting", context.BackgroundJob.Id, JobHelper.ToTimestamp(DateTime.UtcNow));
+                if (!GlobalConfiguration.HasCompatibilityLevel(CompatibilityLevel.Version_180) ||
+                    !context.Storage.HasFeature(JobStorageFeatures.Monitoring.AwaitingJobs))
+                {
+                    transaction.AddToSet("awaiting", context.BackgroundJob.Id, JobHelper.ToTimestamp(DateTime.UtcNow));
+                }
             }
 
             public void Unapply(ApplyStateContext context, IWriteOnlyTransaction transaction)

@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -23,13 +23,13 @@ namespace Hangfire.Server
         /// <summary>
         /// Called before the performance of the job.
         /// </summary>
-        /// <param name="filterContext">The filter context.</param>
-        void OnPerforming(PerformingContext filterContext);
+        /// <param name="context">The filter context.</param>
+        void OnPerforming(PerformingContext context);
 
         /// <summary>
         /// Called after the performance of the job.
         /// </summary>
-        /// <param name="filterContext">The filter context.</param>
-        void OnPerformed(PerformedContext filterContext);
+        /// <param name="context">The filter context.</param>
+        void OnPerformed(PerformedContext context);
     }
 }

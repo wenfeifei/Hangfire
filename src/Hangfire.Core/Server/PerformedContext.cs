@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -14,6 +14,7 @@
 // License along with Hangfire. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Hangfire.Annotations;
 
 namespace Hangfire.Server
 {
@@ -24,10 +25,10 @@ namespace Hangfire.Server
     public class PerformedContext : PerformContext
     {
         public PerformedContext(
-            PerformContext context,
-            object result,
+            [NotNull] PerformContext context,
+            [CanBeNull]object result,
             bool canceled,
-            Exception exception)
+            [CanBeNull] Exception exception)
             : base(context)
         {
             Result = result;
@@ -38,6 +39,7 @@ namespace Hangfire.Server
         /// <summary>
         /// Gets a value that was returned by the job.
         /// </summary>
+        [CanBeNull]
         public object Result { get; }
 
         /// <summary>
@@ -49,6 +51,7 @@ namespace Hangfire.Server
         /// <summary>
         /// Gets an exception that occurred during the performance of the job.
         /// </summary>
+        [CanBeNull]
         public Exception Exception { get; }
 
         /// <summary>

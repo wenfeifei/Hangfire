@@ -1,4 +1,4 @@
-// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+// This file is part of Hangfire. Copyright © 2017 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -22,7 +22,7 @@ using Hangfire.Storage;
 
 namespace Hangfire.SqlServer
 {
-    internal class SqlServerTimeoutJob : IFetchedJob
+    internal sealed class SqlServerTimeoutJob : IFetchedJob
     {
         private readonly ILog _logger = LogProvider.GetLogger(typeof(SqlServerTimeoutJob));
 
@@ -31,6 +31,7 @@ namespace Hangfire.SqlServer
         private bool _disposed;
         private bool _removedFromQueue;
         private bool _requeued;
+        private SqlServerWriteOnlyTransaction _transaction;
 
         private long _lastHeartbeat;
         private TimeSpan _interval;
@@ -72,15 +73,17 @@ namespace Hangfire.SqlServer
         {
             lock (_syncRoot)
             {
+                if (_transaction != null && _transaction.Committed) return;
                 if (!FetchedAt.HasValue) return;
 
-                _storage.UseConnection(null, connection =>
-                {
-                    connection.Execute(
-                        $"delete JQ from [{_storage.SchemaName}].JobQueue JQ with ({GetTableHints()}) where Queue = @queue and Id = @id and FetchedAt = @fetchedAt",
-                        new { queue = Queue, id = Id, fetchedAt = FetchedAt },
-                        commandTimeout: _storage.CommandTimeout);
-                });
+                _storage.UseConnection(
+                    null,
+                    static (storage, connection, ctx) => connection.Execute(
+                        storage.GetQueryFromTemplate(static schemaName =>
+                            $@"delete JQ from [{schemaName}].JobQueue JQ with (forceseek, rowlock) where Queue = @queue and Id = @id and FetchedAt = @fetchedAt"),
+                        new { queue = ctx.Queue, id = ctx.Id, fetchedAt = ctx.FetchedAt },
+                        commandTimeout: storage.CommandTimeout),
+                    this);
 
                 _removedFromQueue = true;
             }
@@ -90,15 +93,18 @@ namespace Hangfire.SqlServer
         {
             lock (_syncRoot)
             {
+                if (_transaction != null && _transaction.Committed) return;
+
                 if (!FetchedAt.HasValue) return;
 
-                _storage.UseConnection(null, connection =>
-                {
-                    connection.Execute(
-                        $"update JQ set FetchedAt = null from [{_storage.SchemaName}].JobQueue JQ with ({GetTableHints()}) where Queue = @queue and Id = @id and FetchedAt = @fetchedAt",
-                        new { queue = Queue, id = Id, fetchedAt = FetchedAt },
-                        commandTimeout: _storage.CommandTimeout);
-                });
+                _storage.UseConnection(
+                    null,
+                    static (storage, connection, ctx) => connection.Execute(
+                        storage.GetQueryFromTemplate(static schemaName =>
+                            $@"update JQ set FetchedAt = null from [{schemaName}].JobQueue JQ with (forceseek, rowlock) where Queue = @queue and Id = @id and FetchedAt = @fetchedAt"),
+                         new { queue = ctx.Queue, id = ctx.Id, fetchedAt = ctx.FetchedAt },
+                         commandTimeout: storage.CommandTimeout),
+                    this);
 
                 FetchedAt = null;
                 _requeued = true;
@@ -114,26 +120,24 @@ namespace Hangfire.SqlServer
 
             lock (_syncRoot)
             {
-                if (!_removedFromQueue && !_requeued)
+                if (!_removedFromQueue && !_requeued && (_transaction == null || !_transaction.Committed))
                 {
                     Requeue();
                 }
             }
         }
 
+        internal void SetTransaction(SqlServerWriteOnlyTransaction transaction)
+        {
+            lock (_syncRoot)
+            {
+                _transaction = transaction;
+            }
+        }
+
         internal void DisposeTimer()
         {
             _storage.HeartbeatProcess.Untrack(this);
-        }
-
-        private string GetTableHints()
-        {
-            if (_storage.Options.UsePageLocksOnDequeue)
-            {
-                return "forceseek, paglock, xlock";
-            }
-
-            return "forceseek, rowlock";
         }
 
         internal void ExecuteKeepAliveQueryIfRequired()
@@ -147,16 +151,18 @@ namespace Hangfire.SqlServer
                     if (!FetchedAt.HasValue) return;
 
                     if (_requeued || _removedFromQueue) return;
+                    if (_transaction != null && _transaction.Committed) return;
 
                     try
                     {
-                        _storage.UseConnection(null, connection =>
-                        {
-                            FetchedAt = connection.ExecuteScalar<DateTime?>(
-                                $"update JQ set FetchedAt = getutcdate() output INSERTED.FetchedAt from [{_storage.SchemaName}].JobQueue JQ with ({GetTableHints()}) where Queue = @queue and Id = @id and FetchedAt = @fetchedAt",
-                                new { queue = Queue, id = Id, fetchedAt = FetchedAt },
-                                commandTimeout: _storage.CommandTimeout);
-                        });
+                        FetchedAt = _storage.UseConnection(
+                            null,
+                            static (storage, connection, ctx) => connection.ExecuteScalar<DateTime?>(
+                                storage.GetQueryFromTemplate(static schemaName =>
+                                    $@"update JQ set FetchedAt = getutcdate() output INSERTED.FetchedAt from [{schemaName}].JobQueue JQ with (forceseek, rowlock) where Queue = @queue and Id = @id and FetchedAt = @fetchedAt"),
+                                new { queue = ctx.Queue, id = ctx.Id, fetchedAt = ctx.FetchedAt },
+                                commandTimeout: storage.CommandTimeout),
+                            this);
 
                         if (!FetchedAt.HasValue)
                         {
@@ -167,7 +173,7 @@ namespace Hangfire.SqlServer
                         _logger.Trace($"Keep-alive query for message {Id} sent");
                         Interlocked.Exchange(ref _lastHeartbeat, now);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex.IsCatchableExceptionType())
                     {
                         _logger.DebugException($"Unable to execute keep-alive query for message {Id}", ex);
                     }

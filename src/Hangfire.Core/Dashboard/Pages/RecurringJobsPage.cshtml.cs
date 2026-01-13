@@ -96,12 +96,12 @@ WriteLiteral("\r\n");
 
     Pager pager = null;
 
-	using (var connection = Storage.GetConnection())
+	using (var connection = Storage.GetReadOnlyConnection())
 	{
 	    var storageConnection = connection as JobStorageConnection;
 	    if (storageConnection != null)
 	    {
-	        pager = new Pager(from, perPage, storageConnection.GetRecurringJobCount());
+	        pager = new Pager(from, perPage, DashboardOptions.DefaultRecordsPerPage, storageConnection.GetRecurringJobCount());
 	        recurringJobs = storageConnection.GetRecurringJobs(pager.FromRecord, pager.FromRecord + pager.RecordsPerPage - 1);
 	    }
 	    else
@@ -114,13 +114,13 @@ WriteLiteral("\r\n");
             
             #line default
             #line hidden
-WriteLiteral("\r\n<div class=\"row\">\r\n    <div class=\"col-md-12\">\r\n        <h1 class=\"page-header\"" +
-">");
+WriteLiteral("\r\n<div class=\"row\">\r\n    <div class=\"col-md-12\">\r\n        <h1 id=\"page-title\" cla" +
+"ss=\"page-header\">");
 
 
             
             #line 39 "..\..\Dashboard\Pages\RecurringJobsPage.cshtml"
-                           Write(Strings.RecurringJobsPage_Title);
+                                           Write(Strings.RecurringJobsPage_Title);
 
             
             #line default
@@ -307,8 +307,8 @@ WriteLiteral("\r\n");
             #line default
             #line hidden
 WriteLiteral("                </div>\r\n\r\n                <div class=\"table-responsive\">\r\n       " +
-"             <table class=\"table\">\r\n                        <thead>\r\n           " +
-"                 <tr>\r\n");
+"             <table class=\"table\" aria-describedby=\"page-title\">\r\n              " +
+"          <thead>\r\n                            <tr>\r\n");
 
 
             
@@ -455,12 +455,12 @@ WriteLiteral("\"/>\r\n                                        </td>\r\n");
             
             #line default
             #line hidden
-WriteLiteral("                                    <td class=\"word-break width-15\">");
+WriteLiteral("                                    <td class=\"word-break\">");
 
 
             
             #line 106 "..\..\Dashboard\Pages\RecurringJobsPage.cshtml"
-                                                               Write(job.Id);
+                                                      Write(job.Id);
 
             
             #line default
@@ -485,7 +485,7 @@ WriteLiteral("\r\n");
                                                 {
                                                     RecurringJobEntity.ParseCronExpression(job.Cron);
                                                 }
-                                                catch (Exception ex)
+                                                catch (Exception ex) when (ex.IsCatchableExceptionType())
                                                 {
                                                     cronDescription = ex.Message;
                                                     cronError = true;
@@ -610,7 +610,7 @@ WriteLiteral("                                    </td>\r\n                     
                                                 var resolver = DashboardOptions.TimeZoneResolver ?? new DefaultTimeZoneResolver();
                                                 displayName = resolver.GetTimeZoneById(job.TimeZoneId).DisplayName;
                                             }
-                                            catch (Exception ex)
+                                            catch (Exception ex) when (ex.IsCatchableExceptionType())
                                             {
                                                 displayName = null;
                                                 exception = ex;
@@ -1026,18 +1026,18 @@ WriteLiteral("                                                </a>\r\n");
             
             #line default
             #line hidden
-WriteLiteral("                                                <em>\r\n                           " +
-"                         ");
+WriteLiteral("                                                <span class=\"label label-default " +
+"label-state-inactive\" title=\"");
 
 
             
-            #line 250 "..\..\Dashboard\Pages\RecurringJobsPage.cshtml"
-                                               Write(Strings.RecurringJobsPage_Canceled);
+            #line 249 "..\..\Dashboard\Pages\RecurringJobsPage.cshtml"
+                                                                                                         Write(Strings.RecurringJobsPage_Canceled);
 
             
             #line default
             #line hidden
-WriteLiteral(" ");
+WriteLiteral("\">\r\n                                                    ");
 
 
             
@@ -1047,7 +1047,7 @@ WriteLiteral(" ");
             
             #line default
             #line hidden
-WriteLiteral("\r\n                                                </em>\r\n");
+WriteLiteral("\r\n                                                </span>\r\n");
 
 
             

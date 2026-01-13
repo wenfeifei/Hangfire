@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -21,6 +21,8 @@ namespace Hangfire.Storage.Monitoring
     public class FetchedJobDto
     {
         public Job Job { get; set; }
+        public JobLoadException LoadException { get; set; }
+        public InvocationData InvocationData { get; set; }
         public string State { get; set; }
         public DateTime? FetchedAt { get; set; }
     }

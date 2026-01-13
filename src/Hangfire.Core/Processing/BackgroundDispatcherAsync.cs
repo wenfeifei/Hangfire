@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2017 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -100,7 +100,7 @@ namespace Hangfire.Processing
             {
                 await _execution.RunAsync(_action, _state).ConfigureAwait(true);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex.IsCatchableExceptionType())
             {
 #if !NETSTANDARD1_3
                 if (!(ex is ThreadAbortException) || !AppDomainUnloadMonitor.IsUnloading)
@@ -110,7 +110,7 @@ namespace Hangfire.Processing
                     {
                         _logger.FatalException("Dispatcher is stopped due to an exception, you need to restart the server manually. Please report it to Hangfire developers.", ex);
                     }
-                    catch
+                    catch (Exception inner) when (inner.IsCatchableExceptionType())
                     {
 #if !NETSTANDARD1_3
                         Debug.WriteLine($"Dispatcher is stopped due to an exception, you need to restart the server manually. Please report it to Hangfire developers: {ex}");

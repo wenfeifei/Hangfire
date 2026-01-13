@@ -11,14 +11,14 @@
     
     var monitor = Storage.GetMonitoringApi();
     var servers = monitor.Servers();
-    var now = DateTime.UtcNow;
-    var inconclusiveThreshold = TimeSpan.FromMinutes(1);
-    var possiblyAbortedThreshold = TimeSpan.FromMinutes(5);
+    var now = StorageUtcNow ?? ApplicationUtcNow;
+    var inconclusiveThreshold = DashboardOptions.ServerPossiblyAbortedThreshold;
+    var possiblyAbortedThreshold = TimeSpan.FromSeconds(inconclusiveThreshold.TotalSeconds * 2);
 }
 
 <div class="row">
     <div class="col-md-12">
-        <h1 class="page-header">@Strings.ServersPage_Title</h1>
+        <h1 id="page-title" class="page-header">@Strings.ServersPage_Title</h1>
 
         @if (servers.Count == 0)
         {
@@ -28,7 +28,7 @@
         }
         else
         {
-            if (servers.Any(x => x.Heartbeat.HasValue && x.Heartbeat.Value < now.Add(-inconclusiveThreshold)))
+            if (servers.Any(x => x.Heartbeat.HasValue && x.Heartbeat.Value < now.Add(-possiblyAbortedThreshold)))
             {
                 <div class="alert alert-info">
                     <h4>@Strings.ServersPage_Note_Title</h4>
@@ -37,7 +37,7 @@
             }
 
             <div class="table-responsive">
-                <table class="table">
+                <table class="table" aria-describedby="page-title">
                     <thead>
                         <tr>
                             <th>@Strings.ServersPage_Table_Name</th>

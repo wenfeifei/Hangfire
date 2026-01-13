@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2017 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -44,12 +44,12 @@ namespace Hangfire.Server
             if (options == null) throw new ArgumentNullException(nameof(options));
 
             var execution = new BackgroundExecution(
-                context.StoppingToken,
                 new BackgroundExecutionOptions
                 {
                     Name = _process.GetType().Name,
                     RetryDelay = options.RetryDelay
-                });
+                },
+                context.StoppingToken);
 
             return new BackgroundDispatcher(
                 execution,
@@ -71,7 +71,7 @@ namespace Hangfire.Server
             var context = new BackgroundProcessContext(
                 serverContext.ServerId,
                 serverContext.Storage,
-                serverContext.Properties.ToDictionary(x => x.Key, x => x.Value),
+                serverContext.Properties.ToDictionary(static x => x.Key, static x => x.Value),
                 executionId,
                 serverContext.StoppingToken,
                 serverContext.StoppedToken,

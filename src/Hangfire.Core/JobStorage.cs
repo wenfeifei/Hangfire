@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -16,6 +16,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Hangfire.Annotations;
 using Hangfire.Logging;
 using Hangfire.Server;
 using Hangfire.States;
@@ -38,7 +39,14 @@ namespace Hangfire
                 {
                     if (_current == null)
                     {
-                        throw new InvalidOperationException("JobStorage.Current property value has not been initialized. You must set it before using Hangfire Client or Server API.");
+                        throw new InvalidOperationException(
+                            "Current JobStorage instance has not been initialized yet. You must set it before using Hangfire Client or Server API. " +
+#if NET45 || NET46
+                            "For NET Framework applications please use GlobalConfiguration.UseXXXStorage method, where XXX is the storage type, like `UseSqlServerStorage`."
+#else
+                            "For .NET Core applications please call the `IServiceCollection.AddHangfire` extension method from Hangfire.NetCore or Hangfire.AspNetCore package depending on your application type when configuring the services and ensure service-based APIs are used instead of static ones, like `IBackgroundJobClient` instead of `BackgroundJob` and `IRecurringJobManager` instead of `RecurringJob`."
+#endif
+                            );
                     }
 
                     return _current;
@@ -61,9 +69,9 @@ namespace Hangfire
             }
             set
             {
-                if (value < TimeSpan.FromHours(1))
+                if (value < TimeSpan.Zero)
                 {
-                    throw new ArgumentException("JobStorage.JobExpirationTimeout value should be equal or greater than 1 hour.");
+                    throw new ArgumentException("JobStorage.JobExpirationTimeout value should be equal or greater than zero.", nameof(value));
                 }
 
                 _jobExpirationTimeout = value;
@@ -76,12 +84,28 @@ namespace Hangfire
 
         public abstract IStorageConnection GetConnection();
 
+        public virtual IStorageConnection GetReadOnlyConnection()
+        {
+            return GetConnection();
+        }
+
 #pragma warning disable 618
+        [Obsolete($"Please use the `{nameof(GetStorageWideProcesses)}` and/or `{nameof(GetServerRequiredProcesses)}` methods instead, and enable `{nameof(JobStorageFeatures)}.{nameof(JobStorageFeatures.ProcessesInsteadOfComponents)}`. Will be removed in 2.0.0.")]
         public virtual IEnumerable<IServerComponent> GetComponents()
         {
             return Enumerable.Empty<IServerComponent>();
         }
 #pragma warning restore 618
+
+        public virtual IEnumerable<IBackgroundProcess> GetServerRequiredProcesses()
+        {
+            return Enumerable.Empty<IBackgroundProcess>();
+        }
+
+        public virtual IEnumerable<IBackgroundProcess> GetStorageWideProcesses()
+        {
+            return Enumerable.Empty<IBackgroundProcess>();
+        }
 
         public virtual IEnumerable<IStateHandler> GetStateHandlers()
         {
@@ -90,6 +114,12 @@ namespace Hangfire
 
         public virtual void WriteOptionsToLog(ILog logger)
         {
+        }
+
+        public virtual bool HasFeature([NotNull] string featureId)
+        {
+            if (featureId == null) throw new ArgumentNullException(nameof(featureId));
+            return false;
         }
     }
 }

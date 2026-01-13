@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2016 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -19,7 +19,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Hangfire.AspNetCore
 {
-    internal class AspNetCoreJobActivatorScope : JobActivatorScope
+    internal sealed class AspNetCoreJobActivatorScope : JobActivatorScope
     {
         private readonly IServiceScope _serviceScope;
 
@@ -36,6 +36,18 @@ namespace Hangfire.AspNetCore
 
         public override void DisposeScope()
         {
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1
+            if (_serviceScope is IAsyncDisposable asyncDisposable)
+            {
+                // Service scope disposal is triggered inside a dedicated background thread,
+                // while Task result is being set in CLR's Thread Pool, so no deadlocks on
+                // wait should happen.
+#pragma warning disable CA2012
+                asyncDisposable.DisposeAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+#pragma warning restore CA2012
+                return;
+            }
+#endif
             _serviceScope.Dispose();
         }
     }

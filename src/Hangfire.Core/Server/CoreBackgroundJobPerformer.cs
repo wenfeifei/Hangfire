@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2015 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -25,14 +25,14 @@ using Hangfire.Processing;
 
 namespace Hangfire.Server
 {
-    internal class CoreBackgroundJobPerformer : IBackgroundJobPerformer
+    internal sealed class CoreBackgroundJobPerformer : IBackgroundJobPerformer
     {
         internal static readonly Dictionary<Type, Func<PerformContext, object>> Substitutions
             = new Dictionary<Type, Func<PerformContext, object>>
             {
-                { typeof (IJobCancellationToken), x => x.CancellationToken },
-                { typeof (CancellationToken), x => x.CancellationToken.ShutdownToken },
-                { typeof (PerformContext), x => x }
+                { typeof (IJobCancellationToken), static x => x.CancellationToken },
+                { typeof (CancellationToken), static x => x.CancellationToken.ShutdownToken },
+                { typeof (PerformContext), static x => x }
             };
 
         private readonly JobActivator _activator;
@@ -114,20 +114,20 @@ namespace Hangfire.Server
             try
             {
                 var methodInfo = context.BackgroundJob.Job.Method;
-                var tuple = Tuple.Create(methodInfo, instance, arguments);
+                var method = new BackgroundJobMethod(methodInfo, instance, arguments);
                 var returnType = methodInfo.ReturnType;
 
                 if (returnType.IsTaskLike(out var getTaskFunc))
                 {
                     if (_taskScheduler != null)
                     {
-                        return InvokeOnTaskScheduler(context, tuple, getTaskFunc);
+                        return InvokeOnTaskScheduler(context, method, getTaskFunc);
                     }
 
-                    return InvokeOnTaskPump(context, tuple, getTaskFunc);
+                    return InvokeOnTaskPump(context, method, getTaskFunc);
                 }
 
-                return InvokeSynchronously(tuple);
+                return InvokeSynchronously(method);
             }
             catch (ArgumentException ex)
             {
@@ -144,18 +144,18 @@ namespace Hangfire.Server
                 HandleJobPerformanceException(ex.InnerException, context.CancellationToken, context.BackgroundJob);
                 throw;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex.IsCatchableExceptionType())
             {
                 HandleJobPerformanceException(ex, context.CancellationToken, context.BackgroundJob);
                 throw;
             }
         }
 
-        private object InvokeOnTaskScheduler(PerformContext context, Tuple<MethodInfo, object, object[]> tuple, Func<object, Task> getTaskFunc)
+        private object InvokeOnTaskScheduler(PerformContext context, BackgroundJobMethod method, Func<object, Task> getTaskFunc)
         {
             var scheduledTask = Task.Factory.StartNew(
-                InvokeSynchronously,
-                tuple,
+                InvokeOnTaskSchedulerInternal,
+                method,
                 CancellationToken.None,
                 TaskCreationOptions.None,
                 _taskScheduler);
@@ -163,10 +163,18 @@ namespace Hangfire.Server
             var result = scheduledTask.GetAwaiter().GetResult();
             if (result == null) return null;
 
-            return getTaskFunc(result).GetTaskLikeResult(result, tuple.Item1.ReturnType);
+            return getTaskFunc(result).GetTaskLikeResult(result, method.ReturnType);
         }
 
-        private static object InvokeOnTaskPump(PerformContext context, Tuple<MethodInfo, object, object[]> tuple, Func<object, Task> getTaskFunc)
+        private static object InvokeOnTaskSchedulerInternal(object state)
+        {
+            // ExecutionContext is captured automatically when calling the Task.Factory.StartNew
+            // method, so we don't need to capture it manually. Please see the comment for
+            // synchronous method execution below for details.
+            return ((BackgroundJobMethod)state).Invoke();
+        }
+
+        private static object InvokeOnTaskPump(PerformContext context, BackgroundJobMethod method, Func<object, Task> getTaskFunc)
         {
             // Using SynchronizationContext here is the best default option, where workers
             // are still running on synchronous dispatchers, and where a single job performer
@@ -186,7 +194,7 @@ namespace Hangfire.Server
                 {
                     SynchronizationContext.SetSynchronizationContext(syncContext);
 
-                    var result = InvokeSynchronously(tuple);
+                    var result = InvokeSynchronously(method);
                     if (result == null) return null;
 
                     var task = getTaskFunc(result);
@@ -200,7 +208,7 @@ namespace Hangfire.Server
                         workItem.Item1(workItem.Item2);
                     }
 
-                    return task.GetTaskLikeResult(result, tuple.Item1.ReturnType);
+                    return task.GetTaskLikeResult(result, method.ReturnType);
                 }
             }
             finally
@@ -211,8 +219,39 @@ namespace Hangfire.Server
 
         private static object InvokeSynchronously(object state)
         {
-            var data = (Tuple<MethodInfo, object, object[]>) state;
-            return data.Item1.Invoke(data.Item2, data.Item3);
+            var method = (BackgroundJobMethod) state;
+            var executionContext = ExecutionContext.Capture();
+
+            if (executionContext != null)
+            {
+                // Asynchronous methods started with the TaskScheduler.StartNew method, capture the
+                // current execution context by default and call the ExecutionContext.Run method on
+                // a thread pool thread to pass the current AsyncLocal values there.
+                //
+                // As a side effect of this call, any updates to AsyncLocal values which happen inside
+                // the background job method itself values aren't passed back to the calling thread
+                // and end their lifetime as soon as method execution is finished.
+                //
+                // Synchronous methods don't need to capture the current execution context because the
+                // thread is not changed. However, any updates to AsyncLocal values that happen inside
+                // the background job method are passed back to the calling thread, expanding their
+                // lifetime to the lifetime of the thread itself. This can result in memory leaks and
+                // possibly affect future background job method executions in unexpected ways.
+                //
+                // To avoid this and to have the same behavior of AsyncLocal between synchronous and
+                // asynchronous methods, we run synchronous ones in a captured execution context. The
+                // ExecutionContext.Run method ensures that AsyncLocal values will be modified only in
+                // the captured context and will not flow back to the parent context.
+                ExecutionContext.Run(executionContext, InvokeSynchronouslyInternal, method);
+                return method.Result;
+            }
+
+            return method.Invoke();
+        }
+
+        private static void InvokeSynchronouslyInternal(object state)
+        {
+            ((BackgroundJobMethod)state).Invoke();
         }
 
         private static object[] SubstituteArguments(PerformContext context)
@@ -230,14 +269,26 @@ namespace Hangfire.Server
                 var parameter = parameters[i];
                 var argument = context.BackgroundJob.Job.Args[i];
 
-                var value = Substitutions.ContainsKey(parameter.ParameterType) 
-                    ? Substitutions[parameter.ParameterType](context) 
+                var value = Substitutions.TryGetValue(parameter.ParameterType, out var substitution) 
+                    ? substitution(context) 
                     : argument;
 
                 result.Add(value);
             }
 
             return result.ToArray();
+        }
+
+        private sealed class BackgroundJobMethod(MethodInfo methodInfo, object instance, object[] parameters)
+        {
+            public Type ReturnType => methodInfo.ReturnType;
+            public object Result { get; private set; }
+
+            public object Invoke()
+            {
+                Result = methodInfo.Invoke(instance, parameters);
+                return Result;
+            }
         }
     }
 }

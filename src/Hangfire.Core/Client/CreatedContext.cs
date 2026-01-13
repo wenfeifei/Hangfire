@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -65,6 +65,7 @@ namespace Hangfire.Client
         /// </summary>
         public bool ExceptionHandled { get; set; }
 
+        [Obsolete("This method only throws InvalidOperationException, will be removed in 2.0.0.")]
         public void SetJobParameter([NotNull] string name, object value)
         {
             if (String.IsNullOrWhiteSpace(name)) throw new ArgumentNullException(nameof(name));

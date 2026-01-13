@@ -76,21 +76,21 @@ WriteLiteral("\r\n");
     
     var monitor = Storage.GetMonitoringApi();
     var servers = monitor.Servers();
-    var now = DateTime.UtcNow;
-    var inconclusiveThreshold = TimeSpan.FromMinutes(1);
-    var possiblyAbortedThreshold = TimeSpan.FromMinutes(5);
+    var now = StorageUtcNow ?? ApplicationUtcNow;
+    var inconclusiveThreshold = DashboardOptions.ServerPossiblyAbortedThreshold;
+    var possiblyAbortedThreshold = TimeSpan.FromSeconds(inconclusiveThreshold.TotalSeconds * 2);
 
 
             
             #line default
             #line hidden
-WriteLiteral("\r\n<div class=\"row\">\r\n    <div class=\"col-md-12\">\r\n        <h1 class=\"page-header\"" +
-">");
+WriteLiteral("\r\n<div class=\"row\">\r\n    <div class=\"col-md-12\">\r\n        <h1 id=\"page-title\" cla" +
+"ss=\"page-header\">");
 
 
             
             #line 21 "..\..\Dashboard\Pages\ServersPage.cshtml"
-                           Write(Strings.ServersPage_Title);
+                                           Write(Strings.ServersPage_Title);
 
             
             #line default
@@ -124,7 +124,7 @@ WriteLiteral("\r\n            </div>\r\n");
         }
         else
         {
-            if (servers.Any(x => x.Heartbeat.HasValue && x.Heartbeat.Value < now.Add(-inconclusiveThreshold)))
+            if (servers.Any(x => x.Heartbeat.HasValue && x.Heartbeat.Value < now.Add(-possiblyAbortedThreshold)))
             {
 
             
@@ -161,9 +161,9 @@ WriteLiteral("\r\n                </div>\r\n");
             
             #line default
             #line hidden
-WriteLiteral("            <div class=\"table-responsive\">\r\n                <table class=\"table\">" +
-"\r\n                    <thead>\r\n                        <tr>\r\n                   " +
-"         <th>");
+WriteLiteral("            <div class=\"table-responsive\">\r\n                <table class=\"table\" " +
+"aria-describedby=\"page-title\">\r\n                    <thead>\r\n                   " +
+"     <tr>\r\n                            <th>");
 
 
             

@@ -1,4 +1,4 @@
-// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -14,10 +14,11 @@
 // License along with Hangfire. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-using System.Data.SqlClient;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 #if FEATURE_CONFIGURATIONMANAGER
@@ -38,12 +39,34 @@ namespace Hangfire.SqlServer
 {
     public class SqlServerStorage : JobStorage
     {
+        private static readonly char[] SemicolonSeparator = new[] { ';' };
+        private static readonly char[] EqualSignSeparator = new[] { '=' };
+
+        private readonly ConcurrentDictionary<KeyValuePair<Func<string, string>, string>, string> _queryTemplateCache = new(new QueryTemplateKeyEqualityComparer());
+
         private readonly DbConnection _existingConnection;
         private readonly Func<DbConnection> _connectionFactory;
         private readonly SqlServerStorageOptions _options;
         private readonly string _connectionString;
         private string _escapedSchemaName;
         private SqlServerHeartbeatProcess _heartbeatProcess;
+
+        private readonly Dictionary<string, bool> _features =
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                { JobStorageFeatures.ExtendedApi, true },
+                { JobStorageFeatures.JobQueueProperty, true },
+                { JobStorageFeatures.ProcessesInsteadOfComponents, true },
+                { JobStorageFeatures.Connection.BatchedGetFirstByLowest, true },
+                { JobStorageFeatures.Connection.GetUtcDateTime, true },
+                { JobStorageFeatures.Connection.GetSetContains, true },
+                { JobStorageFeatures.Connection.LimitedGetSetCount, true },
+                { JobStorageFeatures.Transaction.AcquireDistributedLock, true },
+                { JobStorageFeatures.Transaction.CreateJob, false },
+                { JobStorageFeatures.Transaction.SetJobParameter, false },
+                { JobStorageFeatures.Monitoring.DeletedStateGraphs, true },
+                { JobStorageFeatures.Monitoring.AwaitingJobs, true }
+            };
 
         public SqlServerStorage(string nameOrConnectionString)
             : this(nameOrConnectionString, new SqlServerStorageOptions())
@@ -68,7 +91,7 @@ namespace Hangfire.SqlServer
             if (options == null) throw new ArgumentNullException(nameof(options));
 
             _connectionString = GetConnectionString(nameOrConnectionString);
-            _connectionFactory = () => new SqlConnection(_connectionString);
+            _connectionFactory = DefaultConnectionFactory;
             _options = options;
 
             Initialize();
@@ -148,17 +171,38 @@ namespace Hangfire.SqlServer
         }
 
 #pragma warning disable 618
+        [Obsolete($"Please use the `{nameof(GetStorageWideProcesses)}` and/or `{nameof(GetServerRequiredProcesses)}` methods instead, and enable `{nameof(JobStorageFeatures)}.{nameof(JobStorageFeatures.ProcessesInsteadOfComponents)}`. Will be removed in 2.0.0.")]
         public override IEnumerable<IServerComponent> GetComponents()
 #pragma warning restore 618
         {
-            yield return new ExpirationManager(this, _options.JobExpirationCheckInterval);
+            yield return new ExpirationManager(this, _options.InactiveStateExpirationTimeout, _options.JobExpirationCheckInterval);
             yield return new CountersAggregator(this, _options.CountersAggregateInterval);
             yield return _heartbeatProcess;
+        }
+
+        public override IEnumerable<IBackgroundProcess> GetServerRequiredProcesses()
+        {
+            yield return _heartbeatProcess;
+        }
+
+        public override IEnumerable<IBackgroundProcess> GetStorageWideProcesses()
+        {
+            yield return new ExpirationManager(this, _options.InactiveStateExpirationTimeout, _options.JobExpirationCheckInterval);
+            yield return new CountersAggregator(this, _options.CountersAggregateInterval);
         }
 
         public override void WriteOptionsToLog(ILog logger)
         {
             logger.Info($"Using the following options for SQL Server job storage: Queue poll interval: {_options.QueuePollInterval}.");
+        }
+
+        public override bool HasFeature(string featureId)
+        {
+            if (featureId == null) throw new ArgumentNullException(nameof(featureId));
+
+            return _features.TryGetValue(featureId, out var isSupported) 
+                ? isSupported
+                : base.HasFeature(featureId);
         }
 
         public override string ToString()
@@ -172,29 +216,30 @@ namespace Hangfire.SqlServer
                     return "SQL Server (custom)";
                 }
 
-                var parts = _connectionString.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(x => x.Split(new[] { '=' }, StringSplitOptions.RemoveEmptyEntries))
-                    .Select(x => new { Key = x[0].Trim(), Value = x[1].Trim() })
-                    .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+                var parts = _connectionString.Split(SemicolonSeparator, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(static x => x.Split(EqualSignSeparator, StringSplitOptions.RemoveEmptyEntries))
+                    .Select(static x => new { Key = x[0].Trim(), Value = x[1].Trim() })
+                    .GroupBy(static x => x.Key, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(static x => x.Key, static x => x.Last().Value, StringComparer.OrdinalIgnoreCase);
 
                 var builder = new StringBuilder();
 
                 foreach (var alias in new[] { "Data Source", "Server", "Address", "Addr", "Network Address" })
                 {
-                    if (parts.ContainsKey(alias))
+                    if (parts.TryGetValue(alias, out var part))
                     {
-                        builder.Append(parts[alias]);
+                        builder.Append(part);
                         break;
                     }
                 }
 
-                if (builder.Length != 0) builder.Append("@");
+                if (builder.Length != 0) builder.Append('@');
 
                 foreach (var alias in new[] { "Database", "Initial Catalog" })
                 {
-                    if (parts.ContainsKey(alias))
+                    if (parts.TryGetValue(alias, out var part))
                     {
-                        builder.Append(parts[alias]);
+                        builder.Append(part);
                         break;
                     }
                 }
@@ -203,29 +248,48 @@ namespace Hangfire.SqlServer
                     ? $"SQL Server: {builder}"
                     : canNotParseMessage;
             }
-            catch (Exception)
+            catch (Exception ex) when (ex.IsCatchableExceptionType())
             {
                 return canNotParseMessage;
             }
         }
 
-        internal void UseConnection(DbConnection dedicatedConnection, [InstantHandle] Action<DbConnection> action)
+        internal string GetQueryFromTemplate(Func<string, string> templateFunc)
         {
-            UseConnection(dedicatedConnection, connection =>
-            {
-                action(connection);
-                return true;
-            });
+            return _queryTemplateCache.GetOrAdd(
+                new KeyValuePair<Func<string, string>, string>(templateFunc, SchemaName),
+                static pair => pair.Key(pair.Value));
         }
 
-        internal T UseConnection<T>(DbConnection dedicatedConnection, [InstantHandle] Func<DbConnection, T> func)
+        internal void UseConnection(
+            DbConnection dedicatedConnection,
+            [InstantHandle] Action<SqlServerStorage, DbConnection> action)
+        {
+            UseConnection(dedicatedConnection, static (storage, connection, ctx) =>
+            {
+                ctx(storage, connection);
+                return true;
+            }, action);
+        }
+
+        internal TResult UseConnection<TResult>(
+            DbConnection dedicatedConnection,
+            [InstantHandle] Func<SqlServerStorage, DbConnection, TResult> action)
+        {
+            return UseConnection(dedicatedConnection, static (storage, connection, ctx) => ctx(storage, connection), action);
+        }
+
+        internal TResult UseConnection<TContext, TResult>(
+            DbConnection dedicatedConnection,
+            [InstantHandle] Func<SqlServerStorage, DbConnection, TContext, TResult> func,
+            TContext context)
         {
             DbConnection connection = null;
 
             try
             {
                 connection = dedicatedConnection ?? CreateAndOpenConnection();
-                return func(connection);
+                return func(this, connection, context);
             }
             finally
             {
@@ -236,18 +300,22 @@ namespace Hangfire.SqlServer
             }
         }
 
-        internal void UseTransaction(DbConnection dedicatedConnection, [InstantHandle] Action<DbConnection, DbTransaction> action)
+        internal void UseTransaction<TContext>(
+            DbConnection dedicatedConnection,
+            [InstantHandle] Action<SqlServerStorage, DbConnection, DbTransaction, TContext> action,
+            TContext context)
         {
-            UseTransaction(dedicatedConnection, (connection, transaction) =>
+            UseTransaction(dedicatedConnection, static (storage, connection, transaction, ctx) =>
             {
-                action(connection, transaction);
+                ctx.Key(storage, connection, transaction, ctx.Value);
                 return true;
-            }, null);
+            }, new KeyValuePair<Action<SqlServerStorage, DbConnection, DbTransaction, TContext>, TContext>(action, context), null);
         }
         
-        internal T UseTransaction<T>(
+        internal TResult UseTransaction<TContext, TResult>(
             DbConnection dedicatedConnection,
-            [InstantHandle] Func<DbConnection, DbTransaction, T> func, 
+            [InstantHandle] Func<SqlServerStorage, DbConnection, DbTransaction, TContext, TResult> func,
+            TContext context,
             IsolationLevel? isolationLevel)
         {
             isolationLevel = isolationLevel ?? (_options.UseRecommendedIsolationLevel
@@ -257,15 +325,15 @@ namespace Hangfire.SqlServer
 #pragma warning restore 618
 
 #if FEATURE_TRANSACTIONSCOPE
-            if (IsRunningOnWindows())
+            if (IsRunningOnWindows() && !_options.DisableTransactionScope)
             {
                 using (var transaction = CreateTransaction(isolationLevel))
                 {
-                    var result = UseConnection(dedicatedConnection, connection =>
+                    var result = UseConnection(dedicatedConnection, static (storage, connection, ctx) =>
                     {
                         connection.EnlistTransaction(Transaction.Current);
-                        return func(connection, null);
-                    });
+                        return ctx.Key(storage, connection, null, ctx.Value);
+                    }, new KeyValuePair<Func<SqlServerStorage, DbConnection, DbTransaction, TContext, TResult>, TContext>(func, context));
 
                     transaction.Complete();
 
@@ -275,22 +343,22 @@ namespace Hangfire.SqlServer
             else
 #endif
             {
-                return UseConnection(dedicatedConnection, connection =>
+                return UseConnection(dedicatedConnection, static (storage, connection, ctx) =>
                 {
                     using (var transaction = connection.BeginTransaction(
 #if !FEATURE_TRANSACTIONSCOPE
-                        isolationLevel ??
+                        ctx.Value.Value ??
 #endif
                         System.Data.IsolationLevel.ReadCommitted))
                     {
-                        T result;
+                        TResult result;
 
                         try
                         {
-                            result = func(connection, transaction);
+                            result = ctx.Key(storage, connection, transaction, ctx.Value.Key);
                             transaction.Commit();
                         }
-                        catch
+                        catch (Exception ex) when (ex.IsCatchableExceptionType())
                         {
                             // It is possible that XACT_ABORT option is set, and in this
                             // case transaction will be aborted automatically on server.
@@ -317,7 +385,9 @@ namespace Hangfire.SqlServer
 
                         return result;
                     }
-                });
+                }, new KeyValuePair<Func<SqlServerStorage, DbConnection, DbTransaction, TContext, TResult>, KeyValuePair<TContext, IsolationLevel?>>(
+                    func,
+                    new KeyValuePair<TContext, IsolationLevel?>(context, isolationLevel)));
             }
         }
 
@@ -338,7 +408,7 @@ namespace Hangfire.SqlServer
 
                     return connection;
                 }
-                catch
+                catch (Exception ex) when (ex.IsCatchableExceptionType())
                 {
                     ReleaseConnection(connection);
                     throw;
@@ -357,6 +427,13 @@ namespace Hangfire.SqlServer
             {
                 connection.Dispose();
             }
+        }
+        
+        private DbConnection DefaultConnectionFactory()
+        {
+            var connection = _options.SqlClientFactory.CreateConnection() ?? throw new InvalidOperationException($"The provider factory ({_options.SqlClientFactory}) returned a null DbConnection.");
+            connection.ConnectionString = _connectionString;
+            return connection;
         }
 
         private static bool IsRunningOnWindows()
@@ -385,9 +462,10 @@ namespace Hangfire.SqlServer
                 {
                     try
                     {
-                        UseConnection(null, connection =>
+                        UseConnection(null, static (storage, connection) =>
                         {
-                            SqlServerObjectsInstaller.Install(connection, _options.SchemaName, _options.EnableHeavyMigrations);
+                            // TODO: Escape schema here???
+                            SqlServerObjectsInstaller.Install(connection, storage.Options.SchemaName, storage.Options.EnableHeavyMigrations);
                         });
 
                         lastException = null;
@@ -410,17 +488,44 @@ namespace Hangfire.SqlServer
                 }
             }
 
+            if (_options.TryAutoDetectSchemaDependentOptions)
+            {
+                try
+                {
+                    int? schema = UseConnection(null, static (storage, connection) =>
+                        connection.ExecuteScalar<int>($"select top (1) [Version] from [{storage.SchemaName}].[Schema]"));
+
+                    _options.UseRecommendedIsolationLevel = true;
+                    _options.UseIgnoreDupKeyOption = schema >= 8;
+                    _options.DisableGlobalLocks = schema >= 6;
+
+                    if (schema >= 6 && _options.DeleteExpiredBatchSize == -1)
+                    {
+                        _options.DeleteExpiredBatchSize = 10000;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    var log = LogProvider.GetLogger(typeof(SqlServerStorage));
+                    log.ErrorException("Was unable to use the TryAutoDetectSchemaDependentOptions option due to an exception.", ex);
+                }
+            }
+
             InitializeQueueProviders();
             _heartbeatProcess = new SqlServerHeartbeatProcess();
+
+            _features.Add(
+                JobStorageFeatures.Transaction.RemoveFromQueue(typeof(SqlServerTimeoutJob)),
+                _options.UseTransactionalAcknowledge);
         }
 
         private void InitializeQueueProviders()
         {
-            var defaultQueueProvider = new SqlServerJobQueueProvider(this, _options);
+            var defaultQueueProvider = _options.DefaultQueueProvider ?? new SqlServerJobQueueProvider(this, _options);
             QueueProviders = new PersistentJobQueueProviderCollection(defaultQueueProvider);
         }
 
-        private string GetConnectionString(string nameOrConnectionString)
+        private static string GetConnectionString(string nameOrConnectionString)
         {
 #if FEATURE_CONFIGURATIONMANAGER
             if (IsConnectionString(nameOrConnectionString))
@@ -441,12 +546,12 @@ namespace Hangfire.SqlServer
         }
 
 #if FEATURE_CONFIGURATIONMANAGER
-        private bool IsConnectionString(string nameOrConnectionString)
+        private static bool IsConnectionString(string nameOrConnectionString)
         {
             return nameOrConnectionString.Contains(";");
         }
 
-        private bool IsConnectionStringInConfiguration(string connectionStringName)
+        private static bool IsConnectionStringInConfiguration(string connectionStringName)
         {
             var connectionStringSetting = ConfigurationManager.ConnectionStrings[connectionStringName];
 
@@ -467,20 +572,19 @@ namespace Hangfire.SqlServer
         public static readonly DashboardMetric ActiveConnections = new DashboardMetric(
             "connections:active",
             "Metrics_ActiveConnections",
-            page =>
+            static page =>
             {
                 var sqlStorage = page.Storage as SqlServerStorage;
                 if (sqlStorage == null) return new Metric("???");
 
-                return sqlStorage.UseConnection(null, connection =>
+                return sqlStorage.UseConnection(null, static (_, connection) =>
                 {
                     var sqlQuery = @"
 select count(*) from sys.sysprocesses
 where dbid = db_id(@name) and status != 'background' and status != 'sleeping'";
 
                     var value = connection
-                        .Query<int>(sqlQuery, new { name = connection.Database })
-                        .Single();
+                        .QuerySingle<int>(sqlQuery, new { name = connection.Database });
 
                     return new Metric(value);
                 });
@@ -489,23 +593,167 @@ where dbid = db_id(@name) and status != 'background' and status != 'sleeping'";
         public static readonly DashboardMetric TotalConnections = new DashboardMetric(
             "connections:total",
             "Metrics_TotalConnections",
-            page =>
+            static page =>
             {
                 var sqlStorage = page.Storage as SqlServerStorage;
                 if (sqlStorage == null) return new Metric("???");
 
-                return sqlStorage.UseConnection(null, connection =>
+                return sqlStorage.UseConnection(null, static (_, connection) =>
                 {
                     var sqlQuery = @"
 select count(*) from sys.sysprocesses
 where dbid = db_id(@name) and status != 'background'";
 
                     var value = connection
-                        .Query<int>(sqlQuery, new { name = connection.Database })
-                        .Single();
+                        .QuerySingle<int>(sqlQuery, new { name = connection.Database });
 
                     return new Metric(value);
                 });
             });
+
+        public static readonly DashboardMetric ActiveTransactions = new DashboardMetric(
+            "transactions:active",
+            "Metrics_SQLServer_ActiveTransactions",
+            static page =>
+            {
+                var sqlStorage = page.Storage as SqlServerStorage;
+                if (sqlStorage == null) return new Metric("???");
+
+                return sqlStorage.UseConnection(null, static (_, connection) =>
+                {
+                    var sqlQuery = @"
+select count(*) from sys.sysprocesses
+where dbid = db_id(@name) and status != 'background' and open_tran = 1";
+
+                    var value = connection
+                        .QuerySingle<int>(sqlQuery, new { name = connection.Database });
+
+                    return new Metric(value);
+                });
+            });
+
+        public static readonly DashboardMetric DataFilesSize = new DashboardMetric(
+            "database:files:rows:size",
+            "Metrics_SQLServer_DataFilesSize",
+            static page =>
+            {
+                var sqlStorage = page.Storage as SqlServerStorage;
+                if (sqlStorage == null) return new Metric("???");
+
+                return sqlStorage.UseConnection(null, static (_, connection) =>
+                {
+                    var sqlQuery = @"
+select SUM(CAST(FILEPROPERTY(name, 'SpaceUsed') AS INT)/128.0) as RowsSizeMB from sys.database_files
+where type = 0;";
+
+                    var value = connection.QuerySingle<double>(sqlQuery);
+
+                    return new Metric(value.ToString("F", CultureInfo.CurrentCulture));
+                });
+            });
+
+        public static readonly DashboardMetric LogFilesSize = new DashboardMetric(
+            "database:files:log:size",
+            "Metrics_SQLServer_LogFilesSize",
+            static page =>
+            {
+                var sqlStorage = page.Storage as SqlServerStorage;
+                if (sqlStorage == null) return new Metric("???");
+
+                return sqlStorage.UseConnection(null, static (_, connection) =>
+                {
+                    var sqlQuery = @"
+select SUM(CAST(FILEPROPERTY(name, 'SpaceUsed') AS INT)/128.0) as LogSizeMB from sys.database_files
+where type = 1;";
+
+                    var value = connection.QuerySingle<double>(sqlQuery);
+
+                    return new Metric(value.ToString("F", CultureInfo.CurrentCulture));
+                });
+            });
+
+        public static readonly DashboardMetric SchemaVersion = new DashboardMetric(
+            "sqlserver:schema",
+            "Metrics_SQLServer_SchemaVersion",
+            static page =>
+            {
+                var sqlStorage = page.Storage as SqlServerStorage;
+                if (sqlStorage == null) return new Metric("???");
+
+                return sqlStorage.UseConnection(null, static (storage, connection) =>
+                {
+                    var sqlQuery = $@"select top(1) [Version] from [{storage.SchemaName}].[Schema]";
+                    var version = connection.QuerySingleOrDefault<int?>(sqlQuery);
+
+                    if (!version.HasValue)
+                    {
+                        return new Metric("Unspecified")
+                        {
+                            Style = MetricStyle.Danger,
+                        };
+                    }
+
+                    return new Metric(version.Value)
+                    {
+                        Style = version < SqlServerObjectsInstaller.LatestSchemaVersion
+                            ? MetricStyle.Warning
+                            : version == SqlServerObjectsInstaller.LatestSchemaVersion
+                                ? MetricStyle.Success
+                                : MetricStyle.Default
+                    };
+                });
+            });
+
+        public static readonly Func<string, string, string, DashboardMetric> PerformanceCounterDatabaseMetric = 
+            static (string objectName, string counterName, string instanceName) => new DashboardMetric(
+            $"sqlserver:counter:{objectName}:{counterName}:{instanceName ?? "db"}",
+            counterName,
+            page =>
+            {
+                if (objectName == null) throw new ArgumentNullException(nameof(objectName));
+                if (counterName == null) throw new ArgumentNullException(nameof(counterName));
+
+                var sqlStorage = page.Storage as SqlServerStorage;
+                if (sqlStorage == null) return new Metric("???");
+
+                return sqlStorage.UseConnection(null, static (_, connection, ctx) =>
+                {
+                    var sqlQuery = $@"SELECT cntr_value FROM sys.dm_os_performance_counters where object_name = @objectName and instance_name = @instanceName and counter_name = @counterName";
+                    long? value;
+
+                    try
+                    {
+                        value = connection.QuerySingle<long>(sqlQuery, new
+                        {
+                            objectName = ctx.Item1,
+                            instanceName = ctx.Item2 ?? connection.Database,
+                            counterName = ctx.Item3
+                        });
+                    }
+                    catch
+                    {
+                        value = null;
+                    }
+
+                    return value != null ? new Metric(value.Value) : new Metric("???");
+                }, Tuple.Create(objectName, instanceName, counterName));
+            });
+
+        private sealed class
+            QueryTemplateKeyEqualityComparer : IEqualityComparer<KeyValuePair<Func<string, string>, string>>
+        {
+            public bool Equals(KeyValuePair<Func<string, string>, string> x, KeyValuePair<Func<string, string>, string> y)
+            {
+                return x.Key.Equals(y.Key) && x.Value == y.Value;
+            }
+
+            public int GetHashCode(KeyValuePair<Func<string, string>, string> obj)
+            {
+                unchecked
+                {
+                    return (obj.Key.GetHashCode() * 397) ^ obj.Value.GetHashCode();
+                }
+            }
+        }
     }
 }

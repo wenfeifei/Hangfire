@@ -1,4 +1,4 @@
-// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+// This file is part of Hangfire. Copyright © 2015 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -35,5 +35,6 @@ namespace Hangfire.Dashboard
         public Func<RazorPage, Metric> Func { get; }
 
         public string Title { get; set; }
+        public string Url { get; set; }
     }
 }

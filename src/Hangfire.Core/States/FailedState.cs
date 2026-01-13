@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections.Generic;
+using Hangfire.Annotations;
 using Hangfire.Common;
 using Newtonsoft.Json;
 
@@ -75,12 +76,28 @@ namespace Hangfire.States
         /// 
         /// <exception cref="ArgumentNullException">The <paramref name="exception"/> 
         /// argument is <see langword="null" /></exception>
-        public FailedState(Exception exception)
+        public FailedState([NotNull] Exception exception)
+            : this(exception, null)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="FailedState"/> class
+        /// with the given exception and specified server id.
+        /// </summary>
+        /// <param name="exception">Exception that occurred during the background job processing.</param>
+        /// <param name="serverId">Server Id on which the exception occurred.</param>
+        ///
+        /// <exception cref="ArgumentNullException">The <paramref name="exception"/>
+        /// argument is <see langword="null" /></exception>
+        public FailedState([NotNull] Exception exception, [CanBeNull] string serverId)
         {
             if (exception == null) throw new ArgumentNullException(nameof(exception));
 
             FailedAt = DateTime.UtcNow;
             Exception = exception;
+            ServerId = serverId;
+            MaxLinesInStackTrace = MaxLinesInExceptionDetails;
         }
 
         /// <summary>
@@ -93,6 +110,15 @@ namespace Hangfire.States
         /// Gets the exception that occurred during the background job processing.
         /// </summary>
         public Exception Exception { get; }
+
+        [JsonIgnore]
+        public bool IncludeFileInfo { get; set; } = true;
+
+        /// <summary>
+        /// Gets the server identifier on which the exception occurred.
+        /// </summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public string ServerId { get; }
 
         /// <inheritdoc />
         /// <remarks>
@@ -124,6 +150,9 @@ namespace Hangfire.States
         /// </remarks>
         [JsonIgnore]
         public bool IgnoreJobLoadException => false;
+
+        [JsonIgnore]
+        public int? MaxLinesInStackTrace { get; set; }
 
         /// <inheritdoc />
         /// <remarks>
@@ -165,13 +194,20 @@ namespace Hangfire.States
         /// </remarks>
         public Dictionary<string, string> SerializeData()
         {
-            return new Dictionary<string, string>
+            var result = new Dictionary<string, string>
             {
                 { "FailedAt", JobHelper.SerializeDateTime(FailedAt) },
                 { "ExceptionType", Exception.GetType().FullName },
                 { "ExceptionMessage", Exception.Message },
-                { "ExceptionDetails", Exception.ToStringWithOriginalStackTrace(MaxLinesInExceptionDetails) }
+                { "ExceptionDetails", Exception.ToStringWithOriginalStackTrace(MaxLinesInStackTrace, IncludeFileInfo) }
             };
+
+            if (ServerId != null)
+            {
+                result.Add("ServerId", ServerId);
+            }
+
+            return result;
         }
     }
 }

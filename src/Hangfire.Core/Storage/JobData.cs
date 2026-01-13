@@ -1,4 +1,4 @@
-// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -14,6 +14,7 @@
 // License along with Hangfire. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Hangfire.Common;
 
 namespace Hangfire.Storage
@@ -22,7 +23,9 @@ namespace Hangfire.Storage
     {
         public string State { get; set; }
         public Job Job { get; set; }
+        public InvocationData InvocationData { get; set; }
         public DateTime CreatedAt { get; set; }
+        public IReadOnlyDictionary<string, string> ParametersSnapshot { get; set; }
 
         public JobLoadException LoadException { get; set; }
 

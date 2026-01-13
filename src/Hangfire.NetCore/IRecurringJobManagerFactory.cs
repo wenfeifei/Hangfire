@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2021 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -15,6 +15,11 @@
 
 namespace Hangfire
 {
+    public interface IRecurringJobManagerFactoryV2 : IRecurringJobManagerFactory
+    {
+        IRecurringJobManagerV2 GetManagerV2(JobStorage storage);
+    }
+
     public interface IRecurringJobManagerFactory
     {
         IRecurringJobManager GetManager(JobStorage storage);

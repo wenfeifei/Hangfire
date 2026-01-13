@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2016 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -25,7 +25,7 @@ using Hangfire.States;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-#if NETCOREAPP3_0 || NETSTANDARD2_0 || NET461
+#if !NET451 && !NETSTANDARD1_3
 using Microsoft.Extensions.Hosting;
 #endif
 
@@ -47,22 +47,28 @@ namespace Hangfire
             if (services == null) throw new ArgumentNullException(nameof(services));
             if (configuration == null) throw new ArgumentNullException(nameof(configuration));
 
-            services.TryAddSingletonChecked(_ => JobStorage.Current);
-            services.TryAddSingletonChecked(_ => JobActivator.Current);
+            services.TryAddSingletonChecked(static _ => JobStorage.Current);
+            services.TryAddSingletonChecked(static _ => JobActivator.Current);
 
-            services.TryAddSingleton(_ => DashboardRoutes.Routes);
-            services.TryAddSingleton<IJobFilterProvider>(_ => JobFilterProviders.Providers);
-            services.TryAddSingleton<ITimeZoneResolver>(_ => new DefaultTimeZoneResolver());
+            services.TryAddSingleton(static _ => DashboardRoutes.Routes);
+            services.TryAddSingleton<IJobFilterProvider>(static _ => JobFilterProviders.Providers);
+            services.TryAddSingleton<ITimeZoneResolver>(static _ => new DefaultTimeZoneResolver());
             
-            services.TryAddSingleton(x => new DefaultClientManagerFactory(x));
-            services.TryAddSingletonChecked<IBackgroundJobClientFactory>(x => x.GetService<DefaultClientManagerFactory>());
-            services.TryAddSingletonChecked<IRecurringJobManagerFactory>(x => x.GetService<DefaultClientManagerFactory>());
+            services.TryAddSingleton(static x => new DefaultClientManagerFactory(x));
+            services.TryAddSingletonChecked<IBackgroundJobClientFactory>(static x => x.GetService<DefaultClientManagerFactory>());
+            services.TryAddSingletonChecked<IBackgroundJobClientFactoryV2>(static x => x.GetService<DefaultClientManagerFactory>());
+            services.TryAddSingletonChecked<IRecurringJobManagerFactory>(static x => x.GetService<DefaultClientManagerFactory>());
+            services.TryAddSingletonChecked<IRecurringJobManagerFactoryV2>(static x => x.GetService<DefaultClientManagerFactory>());
 
-            services.TryAddSingletonChecked(x => x
+            services.TryAddSingletonChecked(static x => x
                 .GetService<IBackgroundJobClientFactory>().GetClient(x.GetService<JobStorage>()));
+            services.TryAddSingletonChecked(static x => x
+                .GetService<IBackgroundJobClientFactoryV2>().GetClientV2(x.GetService<JobStorage>()));
 
-            services.TryAddSingletonChecked(x => x
+            services.TryAddSingletonChecked(static x => x
                 .GetService<IRecurringJobManagerFactory>().GetManager(x.GetService<JobStorage>()));
+            services.TryAddSingletonChecked(static x => x
+                .GetService<IRecurringJobManagerFactoryV2>().GetManagerV2(x.GetService<JobStorage>()));
 
             // IGlobalConfiguration serves as a marker indicating that Hangfire's services 
             // were added to the service container (checked by IApplicationBuilder extensions).
@@ -102,7 +108,7 @@ namespace Hangfire
             return services;
         }
 
-#if NETCOREAPP3_0 || NETSTANDARD2_0 || NET461
+#if !NET451 && !NETSTANDARD1_3
         public static IServiceCollection AddHangfireServer(
             [NotNull] this IServiceCollection services,
             [NotNull] Action<BackgroundJobServerOptions> optionsAction)
@@ -208,6 +214,24 @@ namespace Hangfire
             return services;
         }
 
+        public static IServiceCollection AddHangfireServer(
+            [NotNull] this IServiceCollection services,
+            [NotNull] Func<IServiceProvider, IBackgroundProcessingServer> implementationFactory)
+        {
+            if (services == null) throw new ArgumentNullException(nameof(services));
+            if (implementationFactory == null) throw new ArgumentNullException(nameof(implementationFactory));
+
+            services.AddTransient<IHostedService, BackgroundProcessingServerHostedService>(
+                provider => new BackgroundProcessingServerHostedService(
+                    implementationFactory(provider)
+#if NETSTANDARD2_1
+                    , provider.GetService<IHostApplicationLifetime>()
+#endif
+                    ));
+
+            return services;
+        }
+
         private static BackgroundJobServerHostedService CreateBackgroundJobServerHostedService(
             IServiceProvider provider,
             JobStorage storage,
@@ -225,14 +249,22 @@ namespace Hangfire
 
             GetInternalServices(provider, out var factory, out var stateChanger, out var performer);
 
+#if NETSTANDARD2_1 || NETCOREAPP3_0_OR_GREATER
+            var lifetime = provider.GetService<IHostApplicationLifetime>();
+#endif
+
 #pragma warning disable 618
             return new BackgroundJobServerHostedService(
 #pragma warning restore 618
-                storage, options, additionalProcesses, factory, performer, stateChanger);
+                storage, options, additionalProcesses, factory, performer, stateChanger
+#if NETSTANDARD2_1 || NETCOREAPP3_0_OR_GREATER
+                , lifetime
+#endif
+                );
         }
 #endif
 
-        internal static bool GetInternalServices(
+        public static bool GetInternalServices(
             IServiceProvider provider,
             out IBackgroundJobFactory factory,
             out IBackgroundJobStateChanger stateChanger,
@@ -270,7 +302,7 @@ namespace Hangfire
             });
         }
 
-        internal static void ThrowIfNotConfigured(IServiceProvider serviceProvider)
+        public static void ThrowIfNotConfigured(IServiceProvider serviceProvider)
         {
             var configuration = serviceProvider.GetService<IGlobalConfiguration>();
             if (configuration == null)

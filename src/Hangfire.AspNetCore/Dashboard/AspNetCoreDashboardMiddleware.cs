@@ -1,4 +1,4 @@
-// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+// This file is part of Hangfire. Copyright © 2016 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -29,12 +29,23 @@ namespace Hangfire.Dashboard
         private readonly JobStorage _storage;
         private readonly DashboardOptions _options;
         private readonly RouteCollection _routes;
+        private readonly bool _finalizeWhenNotFound;
 
         public AspNetCoreDashboardMiddleware(
             [NotNull] RequestDelegate next,
             [NotNull] JobStorage storage,
             [NotNull] DashboardOptions options,
             [NotNull] RouteCollection routes)
+            : this(next, storage, options, routes, finalizeWhenNotFound: false)
+        {
+        }
+
+        public AspNetCoreDashboardMiddleware(
+            [NotNull] RequestDelegate next,
+            [NotNull] JobStorage storage,
+            [NotNull] DashboardOptions options,
+            [NotNull] RouteCollection routes,
+            bool finalizeWhenNotFound)
         {
             if (next == null) throw new ArgumentNullException(nameof(next));
             if (storage == null) throw new ArgumentNullException(nameof(storage));
@@ -45,15 +56,27 @@ namespace Hangfire.Dashboard
             _storage = storage;
             _options = options;
             _routes = routes;
+            _finalizeWhenNotFound = finalizeWhenNotFound;
         }
 
         public async Task Invoke(HttpContext httpContext)
         {
             var context = new AspNetCoreDashboardContext(_storage, _options, httpContext);
             var findResult = _routes.FindDispatcher(httpContext.Request.Path.Value);
-            
+
             if (findResult == null)
             {
+                if (_finalizeWhenNotFound)
+                {
+                    // When UsePathBase method is used, such as in MapHangfireDashboard, we should
+                    // set 404 status code explicitly to handle non-found endpoints, because no one
+                    // will do this for us.
+                    // https://github.com/HangfireIO/Hangfire/issues/1729
+                    // https://github.com/HangfireIO/Hangfire/issues/2541
+                    SetResponseStatusCode(httpContext, (int)HttpStatusCode.NotFound);
+                    return;
+                }
+
                 await _next.Invoke(httpContext);
                 return;
             }
@@ -63,7 +86,7 @@ namespace Hangfire.Dashboard
             {
                 if (!filter.Authorize(context))
                 {
-                    httpContext.Response.StatusCode = GetUnauthorizedStatusCode(httpContext);
+                    SetResponseStatusCode(httpContext, GetUnauthorizedStatusCode(httpContext));
                     return;
                 }
             }
@@ -72,7 +95,7 @@ namespace Hangfire.Dashboard
             {
                 if (!await filter.AuthorizeAsync(context))
                 {
-                    httpContext.Response.StatusCode = GetUnauthorizedStatusCode(httpContext);
+                    SetResponseStatusCode(httpContext, GetUnauthorizedStatusCode(httpContext));
                     return;
                 }
             }
@@ -88,7 +111,7 @@ namespace Hangfire.Dashboard
                     if (!requestValid)
                     {
                         // Invalid or missing CSRF token
-                        httpContext.Response.StatusCode = (int) HttpStatusCode.Forbidden;
+                        SetResponseStatusCode(httpContext, (int) HttpStatusCode.Forbidden);
                         return;
                     }
                 }
@@ -97,6 +120,14 @@ namespace Hangfire.Dashboard
             context.UriMatch = findResult.Item2;
 
             await findResult.Item1.Dispatch(context);
+        }
+
+        private static void SetResponseStatusCode(HttpContext httpContext, int statusCode)
+        {
+            if (!httpContext.Response.HasStarted)
+            {
+                httpContext.Response.StatusCode = statusCode;
+            }
         }
 
         private static int GetUnauthorizedStatusCode(HttpContext httpContext)

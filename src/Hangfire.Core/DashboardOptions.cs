@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -31,13 +31,15 @@ namespace Hangfire
         {
             AppPath = "/";
             PrefixPath = string.Empty;
-            _asyncAuthorization = new IDashboardAsyncAuthorizationFilter[0];
+            _asyncAuthorization = [];
             Authorization = DefaultAuthorization;
-            IsReadOnlyFunc = _ => false;
+            IsReadOnlyFunc = static _ => false;
             StatsPollingInterval = 2000;
             DisplayStorageConnectionString = true;
             DashboardTitle = "Hangfire Dashboard";
             DisplayNameFunc = null;
+            DefaultRecordsPerPage = 20;
+            DarkModeEnabled = true;
         }
 
         /// <summary>
@@ -67,7 +69,7 @@ namespace Hangfire
 
                 if (ReferenceEquals(Authorization, DefaultAuthorization))
                 {
-                    Authorization = new IDashboardAuthorizationFilter[0];
+                    Authorization = [];
                 }
             }
         }
@@ -94,5 +96,32 @@ namespace Hangfire
         public bool IgnoreAntiforgeryToken { get; set; }
 
         public ITimeZoneResolver TimeZoneResolver { get; set; }
+
+        /// <summary>
+        /// Gets or sets the default number of records per page.
+        /// </summary>
+        public int DefaultRecordsPerPage { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether dark mode support is enabled by including
+        /// or excluding the corresponding CSS files.
+        /// </summary>
+        public bool DarkModeEnabled { get; set; }
+
+        /// <summary>
+        /// Optional favicon path
+        /// </summary>
+        public string FaviconPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the time threshold after which a warning icon will be shown near a job or a
+        /// server, depending on its last reported heartbeat.
+        /// </summary>
+        /// <remarks>
+        /// It should be larger than a configured <see cref="BackgroundJobServerOptions.HeartbeatInterval"/>
+        /// value, to give servers a chance to report it, but is expected to be lower than a configured
+        /// <see cref="BackgroundJobServerOptions.ServerTimeout"/> value, since this is a heuristic anyway.
+        /// </remarks>
+        public TimeSpan ServerPossiblyAbortedThreshold { get; set; } = TimeSpan.FromMinutes(1);
     }
 }

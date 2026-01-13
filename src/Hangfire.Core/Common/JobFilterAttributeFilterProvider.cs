@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -58,13 +58,22 @@ namespace Hangfire.Common
         {
             if (job == null) return Enumerable.Empty<JobFilter>();
 
-            var typeFilters = GetTypeAttributes(job)
-                .Select(attr => new JobFilter(attr, JobFilterScope.Type, null));
+            var typeAttributes = GetTypeAttributes(job);
+            var methodAttributes = GetMethodAttributes(job);
 
-            var methodFilters = GetMethodAttributes(job)
-                .Select(attr => new JobFilter(attr, JobFilterScope.Method, null));
+            List<JobFilter> combined = null;
 
-            return typeFilters.Union(methodFilters).ToList();
+            foreach (var typeAttribute in typeAttributes)
+            {
+                (combined ??= []).Add(new JobFilter(typeAttribute, JobFilterScope.Type, null));
+            }
+            
+            foreach (var methodAttribute in methodAttributes)
+            {
+                (combined ??= []).Add(new JobFilter(methodAttribute, JobFilterScope.Method, null));
+            }
+
+            return combined ?? Enumerable.Empty<JobFilter>();
         }
     }
 }

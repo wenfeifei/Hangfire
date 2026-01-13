@@ -42,13 +42,6 @@ namespace Hangfire.Core.Tests
         }
 
         [Fact]
-        public void Ctor_ThrowsAnException_WhenDelaysInSecondsIsNull()
-        {
-            Assert.Throws<ArgumentNullException>(
-                () => new AutomaticRetryAttribute { DelaysInSeconds = null });
-        }
-
-        [Fact]
         public void Ctor_ThrowsAnException_WhenDelaysInSecondsIsEmpty()
         {
             Assert.Throws<ArgumentNullException>(
@@ -91,6 +84,13 @@ namespace Hangfire.Core.Tests
             Assert.Equal(2, filter.DelaysInSeconds.Length);
             Assert.Equal(5, filter.DelaysInSeconds[0]);
             Assert.Equal(8, filter.DelaysInSeconds[1]);
+        }
+
+        [Fact]
+        public void DelaysInSeconds_CanBeSetToNull()
+        {
+            var filter = new AutomaticRetryAttribute { DelaysInSeconds = null };
+            Assert.NotNull(filter);
         }
 
         [Fact]
@@ -235,6 +235,88 @@ namespace Hangfire.Core.Tests
             filter.OnStateElection(_context.Object);
 
             Assert.IsType<DeletedState>(_context.Object.CandidateState);
+        }
+
+        [Fact]
+        public void OnStateElection_DoesNotDoAnything_WhenOnlyOnIsSpecified_AndIneligibleExceptionIsPassed()
+        {
+            var filter = new AutomaticRetryAttribute { OnlyOn = new[] { typeof(FormatException), typeof(NullReferenceException) } };
+            _context.ApplyContext.NewStateObject = new FailedState(new ArgumentException());
+
+            filter.OnStateElection(_context.Object);
+
+            Assert.IsType<FailedState>(_context.Object.CandidateState);
+            _connection.Verify(x => x.GetJobParameter(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public void OnStateElection_TriggersRetryAnyway_WhenEmptyOnlyOnIsSpecified()
+        {
+            var filter = new AutomaticRetryAttribute { OnlyOn = Type.EmptyTypes };
+            _context.ApplyContext.NewStateObject = new FailedState(new ArgumentException());
+
+            filter.OnStateElection(_context.Object);
+
+            Assert.IsType<ScheduledState>(_context.Object.CandidateState);
+            _connection.Verify(x => x.SetJobParameter(JobId, "RetryCount", "1"));
+        }
+
+        [Fact]
+        public void OnStateElection_WorksAsExpected_WhenOnlyOnIsSpecified_AndAnEligibleExceptionIsPassed()
+        {
+            var filter = new AutomaticRetryAttribute { OnlyOn = new[] { typeof(NullReferenceException), typeof(InvalidOperationException) } };
+
+            filter.OnStateElection(_context.Object);
+
+            Assert.IsType<ScheduledState>(_context.Object.CandidateState);
+            _connection.Verify(x => x.SetJobParameter(JobId, "RetryCount", "1"));
+        }
+
+        [Fact]
+        public void OnStateElection_WorksAsExpected_WhenOnlyOnIsSpecified_AndADerivedClassOfAnEligibleExceptionIsPassed()
+        {
+            var filter = new AutomaticRetryAttribute { OnlyOn = new[] { typeof(ArgumentException) } };
+            _context.ApplyContext.NewStateObject = new FailedState(new ArgumentNullException());
+
+            filter.OnStateElection(_context.Object);
+
+            Assert.IsType<ScheduledState>(_context.Object.CandidateState);
+            _connection.Verify(x => x.SetJobParameter(JobId, "RetryCount", "1"));
+        }
+
+        [Fact]
+        public void OnStateElection_WorksAsExpected_WhenExceptOnIsSpecified_AndIneligibleExceptionIsPassed()
+        {
+            var filter = new AutomaticRetryAttribute { ExceptOn = new[] { typeof(FormatException), typeof(NullReferenceException) } };
+            _context.ApplyContext.NewStateObject = new FailedState(new ArgumentException());
+
+            filter.OnStateElection(_context.Object);
+
+            Assert.IsType<ScheduledState>(_context.Object.CandidateState);
+            _connection.Verify(x => x.SetJobParameter(JobId, "RetryCount", "1"));
+        }
+
+        [Fact]
+        public void OnStateElection_DoesNotDoAnything_WhenExceptOnIsSpecified_AndAnEligibleExceptionIsPassed()
+        {
+            var filter = new AutomaticRetryAttribute { ExceptOn = new[] { typeof(NullReferenceException), typeof(InvalidOperationException) } };
+
+            filter.OnStateElection(_context.Object);
+
+            Assert.IsType<FailedState>(_context.Object.CandidateState);
+            _connection.Verify(x => x.GetJobParameter(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public void OnStateElection_DoesNotDoAnything_WhenExceptOnIsSpecified_AndADerivedClassOfAnEligibleExceptionIsPassed()
+        {
+            var filter = new AutomaticRetryAttribute { ExceptOn = new[] { typeof(ArgumentException) } };
+            _context.ApplyContext.NewStateObject = new FailedState(new ArgumentNullException());
+
+            filter.OnStateElection(_context.Object);
+
+            Assert.IsType<FailedState>(_context.Object.CandidateState);
+            _connection.Verify(x => x.GetJobParameter(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

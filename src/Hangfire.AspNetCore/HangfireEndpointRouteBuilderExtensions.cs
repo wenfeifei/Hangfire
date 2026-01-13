@@ -1,4 +1,19 @@
-#if NETCOREAPP3_0
+// This file is part of Hangfire. Copyright © 2019 Hangfire OÜ.
+// 
+// Hangfire is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as 
+// published by the Free Software Foundation, either version 3 
+// of the License, or any later version.
+// 
+// Hangfire is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+// 
+// You should have received a copy of the GNU Lesser General Public 
+// License along with Hangfire. If not, see <http://www.gnu.org/licenses/>.
+
+#if NETSTANDARD2_1 || NETCOREAPP3_0_OR_GREATER
 using System.Collections.Generic;
 using Hangfire.Annotations;
 using Hangfire.Dashboard;
@@ -43,10 +58,27 @@ namespace Hangfire
 
             var pipeline = app
                 .UsePathBase(pattern)
-                .UseMiddleware<AspNetCoreDashboardMiddleware>(storage, options, routes)
+                .UseMiddleware<AspNetCoreDashboardMiddleware>(storage, options, routes, true)
                 .Build();
 
             return endpoints.Map(pattern + "/{**path}", pipeline);
+        }
+
+        public static IEndpointConventionBuilder MapHangfireDashboardWithNoAuthorizationFilters(
+            [NotNull] this IEndpointRouteBuilder endpoints,
+            [NotNull] string pattern = "/hangfire",
+            [CanBeNull] DashboardOptions options = null,
+            [CanBeNull] JobStorage storage = null)
+        {
+            if (endpoints == null) throw new ArgumentNullException(nameof(endpoints));
+
+            options = options ?? new DashboardOptions();
+
+            // We don't require the default LocalRequestsOnlyAuthorizationFilter since we provide our own policy
+            options.Authorization = Enumerable.Empty<IDashboardAuthorizationFilter>();
+            options.AsyncAuthorization = Enumerable.Empty<IDashboardAsyncAuthorizationFilter>();
+
+            return endpoints.MapHangfireDashboard(pattern, options, storage);
         }
 
         public static IEndpointConventionBuilder MapHangfireDashboardWithAuthorizationPolicy(
@@ -59,14 +91,8 @@ namespace Hangfire
             if (endpoints == null) throw new ArgumentNullException(nameof(endpoints));
             if (authorizationPolicyName == null) throw new ArgumentNullException(nameof(authorizationPolicyName));
 
-            options = options ?? new DashboardOptions();
-
-            // We don't require the default LocalRequestsOnlyAuthorizationFilter since we provide our own policy
-            options.Authorization = Enumerable.Empty<IDashboardAuthorizationFilter>();
-            options.AsyncAuthorization = Enumerable.Empty<IDashboardAsyncAuthorizationFilter>();
-
             return endpoints
-                .MapHangfireDashboard(pattern, options, storage)
+                .MapHangfireDashboardWithNoAuthorizationFilters(pattern, options, storage)
                 .RequireAuthorization(authorizationPolicyName);
         }
     }

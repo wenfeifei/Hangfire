@@ -1,4 +1,4 @@
-// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -15,13 +15,14 @@
 
 using System;
 using System.Data;
+using System.Globalization;
 using System.Messaging;
 using System.Threading;
 using Hangfire.Storage;
 
 namespace Hangfire.SqlServer.Msmq
 {
-    internal class MsmqJobQueue : IPersistentJobQueue
+    internal sealed class MsmqJobQueue : IPersistentJobQueue
     {
         private static readonly TimeSpan SyncReceiveTimeout = TimeSpan.FromSeconds(5);
 
@@ -104,7 +105,7 @@ namespace Hangfire.SqlServer.Msmq
 
         private MessageQueue GetMessageQueue(string queue)
         {
-            return new MessageQueue(String.Format(_pathPattern, queue));
+            return new MessageQueue(String.Format(CultureInfo.InvariantCulture, _pathPattern, queue));
         }
     }
 }

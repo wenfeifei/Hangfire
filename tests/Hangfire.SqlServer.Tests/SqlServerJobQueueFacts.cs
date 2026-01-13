@@ -4,6 +4,7 @@ using System;
 using System.Data.Common;
 using System.Linq;
 using System.Threading;
+using Hangfire.Annotations;
 using ReferencedDapper::Dapper;
 using Xunit;
 // ReSharper disable ArgumentsStyleLiteral
@@ -421,6 +422,35 @@ select scope_identity() as Id;";
 
         [Theory, CleanDatabase]
         [InlineData(false), InlineData(true)]
+        public void Dequeue_InvisibilityTimeout_ShouldFetchTheFirstJob_FromTheSpecifiedQueue(bool useMicrosoftDataSqlClient)
+        {
+            var arrangeSql = $@"
+insert into [{Constants.DefaultSchema}].JobQueue (JobId, Queue)
+output inserted.Id
+values (@jobId1, @queue), (@jobId2, @queue);";
+
+            // Arrange
+            UseConnection(connection =>
+            {
+                var id = (int)connection.Query(
+                    arrangeSql,
+                    new { jobId1 = 1, jobId2 = 2, queue = "default" }).First().Id;
+                var queue = CreateJobQueue(useMicrosoftDataSqlClient, invisibilityTimeout: DefaultTimeout);
+
+                // Act
+                var payload = (SqlServerTimeoutJob)queue.Dequeue(
+                    DefaultQueues,
+                    CreateTimingOutCancellationToken());
+
+                // Assert
+                Assert.Equal(id, payload.Id);
+                Assert.Equal("1", payload.JobId);
+                Assert.Equal("default", payload.Queue);
+            }, useMicrosoftDataSqlClient);
+        }
+
+        [Theory, CleanDatabase]
+        [InlineData(false), InlineData(true)]
         public void Dequeue_InvisibilityTimeout_ShouldLeaveJobInTheQueue_ButSetItsFetchedAtValue(bool useMicrosoftDataSqlClient)
         {
             var arrangeSql = $@"
@@ -614,6 +644,34 @@ values (scope_identity(), @queue)";
 
         [Theory, CleanDatabase]
         [InlineData(false), InlineData(true)]
+        public void Enqueue_ThrowsAnException_WhenTheGivenQueueIsTooLong(bool useMicrosoftDataSqlClient)
+        {
+            UseConnection(connection =>
+            {
+                var queueName = "some-really-long-queue-name-that-should-cause-an-exception-to-be-thrown-and-not-ignored";
+                var queue = CreateJobQueue(useMicrosoftDataSqlClient, invisibilityTimeout: null);
+
+                var exception = Assert.ThrowsAny<DbException>(() =>
+                {
+#if NETCOREAPP
+                    using (var transaction = connection.BeginTransaction())
+                    {
+                        queue.Enqueue(connection, transaction, queueName, "1");
+                        transaction.Commit();
+                    }
+#else
+                    queue.Enqueue(connection, queueName, "1");
+#endif
+                });
+
+                var record = connection.Query($"select * from [{Constants.DefaultSchema}].JobQueue").SingleOrDefault();
+                Assert.Null(record);
+                Assert.StartsWith("String or binary data would be truncated", exception.Message);
+            }, useMicrosoftDataSqlClient);
+        }
+
+        [Theory, CleanDatabase]
+        [InlineData(false), InlineData(true)]
         public void Enqueue_AddsAJob_WhenIdIsLongValue(bool useMicrosoftDataSqlClient)
         {
             UseConnection(connection =>
@@ -641,15 +699,13 @@ values (scope_identity(), @queue)";
             return source.Token;
         }
 
-        public static void Sample(string arg1, string arg2) { }
-
         private static SqlServerJobQueue CreateJobQueue(bool useMicrosoftDataSqlClient, TimeSpan? invisibilityTimeout)
         {
             var storage = new SqlServerStorage(() => ConnectionUtils.CreateConnection(useMicrosoftDataSqlClient));
             return new SqlServerJobQueue(storage, new SqlServerStorageOptions { SlidingInvisibilityTimeout = invisibilityTimeout });
         }
 
-        private static void UseConnection(Action<DbConnection> action, bool useMicrosoftDataSqlClient)
+        private static void UseConnection([InstantHandle] Action<DbConnection> action, bool useMicrosoftDataSqlClient)
         {
             using (var connection = ConnectionUtils.CreateConnection(useMicrosoftDataSqlClient))
             {

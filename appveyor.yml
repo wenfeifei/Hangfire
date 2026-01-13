@@ -7,11 +7,11 @@
 #   - Section names should be unique on each level.
 
 # Please don't edit it manually, use the `build.bat version` command instead.
-version: 1.7.28-build-0{build}
+version: 1.8.22-build-0{build}
 
 image:
-  - Visual Studio 2019
-  - Ubuntu
+  - Visual Studio 2022
+  - Ubuntu2004
 
 #---------------------------------#
 #    environment configuration    #
@@ -19,30 +19,31 @@ image:
 
 # environment variables
 environment:
-  BuildEnvironment: appveyor
-  Hangfire_SqlServer_ConnectionStringTemplate: Server=.\SQL2017;Database={0};User Id=sa;Password=Password12!
-  DOCKER_USERNAME:
-    secure: BDjid/SqKs9YCA39j55dIg==
-  DOCKER_PASSWORD:
-    secure: 5QtoskttMBDkXfFyFZSLhZIlUfsDUDgkCS9jy7rUM6ROPeRytpzEdkIXA5UNNV9K
+  Hangfire_SqlServer_ConnectionStringTemplate: Server=.\SQL2017;Database={0};User Id=sa;Password=Password12!;TrustServerCertificate=True;PoolBlockingPeriod=NeverBlock
+  SIGNPATH_API_TOKEN:
+    secure: nvG+jv/K3utFvpHGx/N6Glpv0Wdj0wfBSl8c/tkHbn2AIwGcNe2e4VSOkod7xVpC
+  COVERITY_TOKEN:
+    secure: r3yBqxgALySnCK9W6uiStqoadsqYtrWQolzxGDVKF74=
+  COVERITY_EMAIL:
+    secure: wf51HXCiUYxuTe+eo3uQOxqyptSLrH4IEqq0958Rmx8=
 
 # enable service required for tests
 services:
   - mssql2017
-
-pull_requests:
-  do_not_increment_build_number: true
-
-shallow_clone: true
 
 #---------------------------------#
 #       build configuration       #
 #---------------------------------#
 
 # Installing MSMQ manually to avoid "Cannot initialize 'msmq' service handler" error
-build_script:
+before_build:
   - cmd: powershell Import-Module ServerManager; Add-WindowsFeature MSMQ; net start msmq
-  - cmd: ./build.bat ci
+  - pwsh: Install-PSResource -Name SignPath -TrustRepository
+  - sh: nuget locals all -clear
+
+build_script:  
+  - pwsh: IF ($IsWindows -and ($env:APPVEYOR_SCHEDULED_BUILD -or $env:APPVEYOR_REPO_COMMIT_MESSAGE -like "*covscan*")) { .\coverity-scan.ps1 }
+  - cmd: IF NOT DEFINED APPVEYOR_SCHEDULED_BUILD build.bat sign
   - sh: chmod +x build.sh; ./build.sh
 
 #---------------------------------#
@@ -65,16 +66,7 @@ artifacts:
 
 deploy:
   - provider: NuGet
-    skip_symbols: true
     api_key: 
-      secure: Bmfqrlce8vKi7VkTN/2yIBWl+M4oScDVTBA3DbHovzTslO6xzvBSoBT3Wb0fmOcc
+      secure: Dosrx2t2k8Wd3ztWs02lY7Bg32Z1CeR7AJcth2CZORXqBwtzMLbYKRIR4hUkmYLk
     on:
       appveyor_repo_tag: true
-
-notifications:
-  - provider: Slack
-    incoming_webhook:
-      secure: bqJhjmwwsSMJ/8imZJBOOtwbsNF51p24M8HZlIx1+asIHHUhXWHrP9vkuOPK3OnqNopmloLOOBoaEpYAkClkDuEC61a5Go5NY9KSSB9UMjk=
-    on_build_success: false
-    on_build_failure: true
-    on_build_status_changed: true

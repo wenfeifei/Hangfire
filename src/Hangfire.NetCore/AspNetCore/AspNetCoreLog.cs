@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2016 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -21,7 +21,7 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Hangfire.AspNetCore
 {
-    internal class AspNetCoreLog : ILog
+    internal sealed class AspNetCoreLog : ILog
     {
         private static readonly Func<object, Exception, string> MessageFormatterFunc = MessageFormatter;
 

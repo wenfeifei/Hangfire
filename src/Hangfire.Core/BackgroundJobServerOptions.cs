@@ -1,4 +1,4 @@
-// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+// This file is part of Hangfire. Copyright © 2013-2014 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -56,6 +56,13 @@ namespace Hangfire
         }
         
         public string ServerName { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether storage instance will include only <see cref="Worker"/> and required
+        /// <see cref="ServerWatchdog"/> and <see cref="ServerJobCancellationWatcher"/> processes. No
+        /// storage-related processes or recurring/delayed job schedulers will be included.
+        /// </summary>
+        public bool IsLightweightServer { get; set; }
 
         public int WorkerCount
         {
@@ -177,5 +184,18 @@ namespace Hangfire
 
         [CanBeNull]
         public TaskScheduler TaskScheduler { get; set; }
+        
+        [CanBeNull]
+        public Action<Thread> WorkerThreadConfigurationAction { get; set; }
+
+        /// <summary>
+        /// Experimental option for schedulers, but not for workers. Gets or sets the
+        /// maximum degree of parallelism for <see cref="RecurringJobScheduler"/>
+        /// and <see cref="DelayedJobScheduler"/> processes, allowing them to enable
+        /// parallel scheduling of recurring and delayed jobs when the specified value
+        /// is greater than <c>1</c>. Parallel work items are executed on the task scheduler
+        /// specified in the <see cref="TaskScheduler"/> property.
+        /// </summary>
+        public int MaxDegreeOfParallelismForSchedulers { get; set; } = 1;
     }
 }

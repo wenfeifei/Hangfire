@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2016 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -34,8 +34,8 @@ namespace Hangfire.Dashboard
         public override string Method => _context.Request.Method;
         public override string Path => _context.Request.Path.Value;
         public override string PathBase => _context.Request.PathBase.Value;
-        public override string LocalIpAddress => _context.Connection.LocalIpAddress.ToString();
-        public override string RemoteIpAddress => _context.Connection.RemoteIpAddress.ToString();
+        public override string LocalIpAddress => _context.Connection.LocalIpAddress?.ToString();
+        public override string RemoteIpAddress => _context.Connection.RemoteIpAddress?.ToString();
         public override string GetQuery(string key) => _context.Request.Query[key];
 
         public override async Task<IList<string>> GetFormValuesAsync(string key)

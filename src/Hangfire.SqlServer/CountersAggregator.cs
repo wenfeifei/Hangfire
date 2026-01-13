@@ -1,4 +1,4 @@
-﻿// This file is part of Hangfire. Copyright © 2022 Hangfire OÜ.
+﻿// This file is part of Hangfire. Copyright © 2015 Hangfire OÜ.
 // 
 // Hangfire is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as 
@@ -23,7 +23,7 @@ using Hangfire.Server;
 namespace Hangfire.SqlServer
 {
 #pragma warning disable 618
-    internal class CountersAggregator : IServerComponent
+    internal sealed class CountersAggregator : IServerComponent, IBackgroundProcess
 #pragma warning restore 618
     {
         // This number should be high enough to aggregate counters efficiently,
@@ -44,21 +44,33 @@ namespace Hangfire.SqlServer
             _interval = interval;
         }
 
+        public void Execute(BackgroundProcessContext context)
+        {
+            if (context.Storage is not SqlServerStorage storage)
+            {
+                return;
+            }
+
+            ExecuteCore(storage, context.StoppingToken);
+        }
+
         public void Execute(CancellationToken cancellationToken)
+        {
+            ExecuteCore(_storage, cancellationToken);
+        }
+
+        private void ExecuteCore(SqlServerStorage storage, CancellationToken cancellationToken)
         {
             _logger.Debug("Aggregating records in 'Counter' table...");
 
-            int removedCount = 0;
+            int removedCount;
 
             do
             {
-                _storage.UseConnection(null, connection =>
-                {
-                    removedCount = connection.Execute(
-                        GetAggregationQuery(_storage),
-                        new { now = DateTime.UtcNow, count = NumberOfRecordsInSinglePass },
-                        commandTimeout: 0);
-                });
+                removedCount = storage.UseConnection(null, static (storage, connection) => connection.Execute(
+                    GetAggregationQuery(storage),
+                    new { now = DateTime.UtcNow, count = NumberOfRecordsInSinglePass },
+                    commandTimeout: 0));
 
                 if (removedCount >= NumberOfRecordsInSinglePass)
                 {
@@ -84,7 +96,7 @@ namespace Hangfire.SqlServer
             // much lower cost by adding a clustered index on [Key] column.
             // However extended support for SQL Server 2012 SP4 ends only on
             // July 12, 2022.
-            return
+            return storage.GetQueryFromTemplate(static schemaName =>
 $@"DECLARE @RecordsToAggregate TABLE
 (
 	[Key] NVARCHAR(100) COLLATE DATABASE_DEFAULT NOT NULL,
@@ -99,11 +111,11 @@ BEGIN TRAN
 
 DELETE TOP (@count) C
 OUTPUT DELETED.[Key], DELETED.[Value], DELETED.[ExpireAt] INTO @RecordsToAggregate
-FROM [{storage.SchemaName}].[Counter] C WITH (READPAST, XLOCK, INDEX(0))
+FROM [{schemaName}].[Counter] C WITH (READPAST, XLOCK, INDEX(0))
 
 SET NOCOUNT ON
 
-;MERGE [{storage.SchemaName}].[AggregatedCounter] WITH (FORCESEEK, HOLDLOCK) AS [Target]
+;MERGE [{schemaName}].[AggregatedCounter] WITH (FORCESEEK, HOLDLOCK) AS [Target]
 USING (
 	SELECT [Key], SUM([Value]) as [Value], MAX([ExpireAt]) AS [ExpireAt] FROM @RecordsToAggregate
 	GROUP BY [Key]) AS [Source] ([Key], [Value], [ExpireAt])
@@ -113,7 +125,7 @@ WHEN MATCHED THEN UPDATE SET
 	[Target].[ExpireAt] = (SELECT MAX([ExpireAt]) FROM (VALUES ([Source].ExpireAt), ([Target].[ExpireAt])) AS MaxExpireAt([ExpireAt]))
 WHEN NOT MATCHED THEN INSERT ([Key], [Value], [ExpireAt]) VALUES ([Source].[Key], [Source].[Value], [Source].[ExpireAt]);
 
-COMMIT TRAN";
+COMMIT TRAN");
         }
     }
 }
